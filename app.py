@@ -24,7 +24,6 @@ SUPABASE_URL = "https://parwalgtnfgzwaibjpoz.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBhcndhbGd0bmZnendhaWJqcG96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyMDY2NDksImV4cCI6MjEwMzc4MjY0OX0.ZJmfo07gK_u4aEDPSDTipK3i1pG4Zju0HQa_bofVkDA"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-
 # BRANDING DICTIONARY MAP
 TEAM_BRANDING = {
     "Alabama": {"primary": "#9E1B32", "emoji": "🐘"}, "Georgia": {"primary": "#BA0C2F", "emoji": "🐶"},
@@ -44,7 +43,7 @@ TEAM_BRANDING = {
     "Memphis": {"primary": "#003087", "emoji": "🐯"}, "Sacramento State": {"primary": "#004B49", "emoji": "🐝"},
     "Florida State": {"primary": "#78243C", "emoji": "🏹"}, "TCU": {"primary": "#4D1979", "emoji": "🐸"},
     "North Dakota State": {"primary": "#0A5640", "emoji": "🦬"}, "Virginia": {"primary": "#232D4B", "emoji": "⚔️"},
-    "Jacksonville State": {"primary": "#CC0000", "emoji": "🐓"}, "NC State": {"primary": "#CC0000", "emoji": "🐺"}
+    "Jacksonville State": {"primary": "#CC0000", "emoji": "Camp"}, "NC State": {"primary": "#CC0000", "emoji": "🐺"}
 }
 DEFAULT_BRAND = {"primary": "#1e293b", "emoji": "🏈"}
 
@@ -55,13 +54,20 @@ def pct_to_american_odds(percentage):
         return f"{int(-((percentage) / (100 - percentage)) * 100)}"
     return f"+{int(((100 - percentage) / percentage) * 100)}"
 
+# EXPANDED PROP MARKETS TO MATCH NEW COLUMNS AND AUTO-CALCULATED TOTAL MARGINS
 PROP_MARKETS = {
-    "Passing Yards":   {"col": "pass_yards", "max": 500.0, "default": 249.5, "step": 1.0, "unit": "Yds"},
-    "Passing TDs":     {"col": "pass_tds",   "max": 6.0,   "default": 1.5,   "step": 0.5, "unit": "TDs"},
-    "Rushing Yards":   {"col": "rush_yards", "max": 250.0, "default": 79.5,  "step": 1.0, "unit": "Yds"},
-    "Rushing TDs":     {"col": "rush_tds",   "max": 4.0,   "default": 0.5,   "step": 0.5, "unit": "TDs"},
-    "Receiving Yards": {"col": "rec_yards",  "max": 200.0, "default": 59.5,  "step": 1.0, "unit": "Yds"},
-    "Receptions":      {"col": "receptions", "max": 12.0,  "default": 4.5,   "step": 0.5, "unit": "Rec"}
+    "Passing Yards":       {"col": "pass_yards", "max": 500.0, "default": 249.5, "step": 1.0, "unit": "Yds"},
+    "Pass Completions":    {"col": "pass_cmp",   "max": 40.0,  "default": 19.5,  "step": 0.5, "unit": "Cmp"},
+    "Passing TDs":         {"col": "pass_tds",   "max": 6.0,   "default": 1.5,   "step": 0.5, "unit": "TDs"},
+    "Interceptions Thrown":{"col": "pass_int",   "max": 5.0,   "default": 0.5,   "step": 0.5, "unit": "Int"},
+    "Rushing Yards":       {"col": "rush_yards", "max": 250.0, "default": 79.5,  "step": 1.0, "unit": "Yds"},
+    "Rushing Attempts":    {"col": "rush_att",   "max": 35.0,  "default": 14.5,  "step": 0.5, "unit": "Att"},
+    "Rushing TDs":         {"col": "rush_tds",   "max": 4.0,   "default": 0.5,   "step": 0.5, "unit": "TDs"},
+    "Receiving Yards":     {"col": "rec_yards",  "max": 200.0, "default": 59.5,  "step": 1.0, "unit": "Yds"},
+    "Receptions":          {"col": "receptions", "max": 12.0,  "default": 4.5,   "step": 0.5, "unit": "Rec"},
+    "Receiving TDs":       {"col": "rec_tds",    "max": 4.0,   "default": 0.5,   "step": 0.5, "unit": "TDs"},
+    "Total Offense Yds":   {"col": "total_offense", "max": 600.0, "default": 299.5, "step": 1.0, "unit": "Yds"},
+    "Total Scrimmage Yds": {"col": "total_scrimmage", "max": 300.0, "default": 99.5, "step": 1.0, "unit": "Yds"}
 }
 
 try:
@@ -69,13 +75,21 @@ try:
     df = pd.DataFrame(response.data)
 
     if df.empty:
-        st.warning("🔄 Table layout established on live server. Awaiting records from your data collection loader...")
+        st.warning("🔄 Table layout established on live server. Awaiting records...")
     else:
-        for m in PROP_MARKETS.values():
-            if m["col"] in df.columns:
-                df[m["col"]] = df[m["col"]].fillna(0)
+        # Fill missing values and handle auto-calculations securely
+        raw_cols = ["pass_yards", "pass_cmp", "pass_att", "pass_tds", "pass_int", "rush_att", "rush_yards", "rush_tds", "rec_yards", "receptions", "rec_tds"]
+        for c in raw_cols:
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c]).fillna(0).astype(int)
+            else:
+                df[c] = 0
 
-        # Unified tabs setup at the top of the app page layout
+        # LIVE MATHEMATICAL AUTO-CALCULATIONS FOR COMBINED MARKETS
+        df["total_offense"] = df["pass_yards"] + df["rush_yards"]
+        df["total_scrimmage"] = df["rush_yards"] + df["rec_yards"]
+
+        # Structural UI Multi-tab separation
         tab_analysis, tab_blank = st.tabs(["🎯 Single Player Analysis", "🆕 Blank Workbench Page"])
 
         # Global Sidebar Filter Settings
@@ -84,9 +98,6 @@ try:
         selected_year = st.sidebar.selectbox("📅 Select Season Year", available_years)
         year_df = df[df["season"] == selected_year]
 
-        # ==========================================
-        # TAB 1: MAIN ADVANCED PLAYER PROP ANALYSIS
-        # ==========================================
         with tab_analysis:
             available_teams = sorted(year_df["team"].unique()) if "team" in year_df.columns else []
             selected_team = st.sidebar.selectbox("1️⃣ Select Program/Team", available_teams)
@@ -98,17 +109,16 @@ try:
             filtered_team_df = year_df[year_df["team"] == selected_team]
             
             if filtered_team_df.empty:
-                st.error("⚠️ No active team profiles recorded for this season configuration parameters.")
+                st.error("⚠️ No active team profiles recorded for this parameters selection.")
             else:
                 player_totals = filtered_team_df.groupby("player_name")[stat_col].sum().reset_index()
-                player_totals = player_totals[player_totals[stat_col] > 0]
                 player_totals = player_totals.sort_values(by=stat_col, ascending=False)
                 ranked_players = player_totals["player_name"].tolist()
 
                 if not ranked_players:
-                    st.warning(f"⚠️ No active lines with logged {selected_market_name} stats on this team.")
+                    st.warning(f"⚠️ No active lines with logged {selected_market_name} stats.")
                 else:
-                    display_options = {r["player_name"]: f"{r['player_name']} ({r[stat_col]:.0f} Total {market_info['unit']})" for _, r in player_totals.iterrows()}
+                    display_options = {r["player_name"]: f"{r['player_name']} ({r[stat_col]:.0f} {market_info['unit']})" for _, r in player_totals.iterrows()}
                     selected_player = st.sidebar.selectbox("3️⃣ Select Player Profile", ranked_players, format_func=lambda x: display_options.get(x, x))
 
                     prop_line = st.sidebar.slider("Sportsbook Line Mark", min_value=0.0, max_value=market_info["max"], value=market_info["default"], step=market_info["step"])
@@ -145,34 +155,31 @@ try:
                     with col_odds2:
                         st.markdown(f"#### 📉 Target Under: **{prop_line} {market_info['unit']}**")
                         st.metric(label="Model Implied Price", value=fair_under_odds)
-                        
+                    
                     st.markdown("---")
                     st.subheader(f"📊 Historical Game Breakdown: {selected_market_name}")
-                    player_df["Result"] = player_df[stat_col].apply(lambda x: "🟢 OVER" if x > prop_line else "🔴 UNDER")
+                    player_df["Result"] = player_df[stat_col].apply(lambda x: "🟢 OVER" if x > prop_line else "🔴 UNDER")    
                     
                     fig = px.bar(
                         player_df, x="opponent", y=stat_col, color="Result",
-                        color_discrete_map={"🟢 OVER": brand["primary"], "🔴 UNDER": "#475569"}, 
+                        color_discrete_map={"🟢 OVER": brand["primary"], "🔴 UNDER": "#475569"},
                         text=stat_col, labels={stat_col: selected_market_name, "opponent": "Opponent"}
                     )
                     fig.add_hline(y=prop_line, line_dash="dash", line_color="#cbd5e1")
                     fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#f1f5f9")
                     st.plotly_chart(fig, use_container_width=True)
-                                        # 8. --- SPREADSHEET TABLE ---
+                    
                     st.subheader("📄 Filtered Database Records")
                     show_cols = [c for c in ["season", "week", "opponent", stat_col] if c in player_df.columns]
                     st.dataframe(player_df[show_cols], use_container_width=True)
-
-        # ==========================================
-        # TAB 2: CLEAN EMPTY WORKBENCH PAGE RESIDENCE
-        # ==========================================
+                    
         with tab_blank:
             st.header("🆕 Custom Workspace Workbench")
             st.markdown("---")
             st.info("🎯 This is your clean, empty workbench page. Let me know what feature you want to build here next!")
-
+                    
 except Exception as e:
     st.error("❌ The dashboard server encountered an obstacle connecting to your database.")
     st.code(e)
-
                     
+
