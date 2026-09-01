@@ -15,14 +15,17 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🏈 College Football Player Prop Co-Pilot")
-st.markdown("##### *Advanced Historical Analysis & Fair Value Odds Engine*")
-st.markdown("---")
-
 # Secure connection setup
 SUPABASE_URL = "https://parwalgtnfgzwaibjpoz.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBhcndhbGd0bmZnendhaWJqcG96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyMDY2NDksImV4cCI6MjEwMzc4MjY0OX0.ZJmfo07gK_u4aEDPSDTipK3i1pG4Zju0HQa_bofVkDA"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# 🚀 TABS ARE EXECUTED FIRST AT THE ABSOLUTE TOP OF THE SCREEN
+tab_analysis, tab_blank = st.tabs(["🎯 Single Player Analysis", "🆕 Blank Workbench Page"])
+
+# Custom button margins layout adjustment
+st.markdown("<br>", unsafe_allow_html=True)
+
 
 # BRANDING DICTIONARY MAP
 TEAM_BRANDING = {
@@ -87,7 +90,12 @@ try:
         # TAB 1: MAIN ADVANCED PLAYER PROP ANALYSIS
         # ==========================================
         with tab_analysis:
+            st.title("🏈 College Football Player Prop Co-Pilot")
+            st.markdown("##### *Advanced Historical Analysis & Fair Value Odds Engine*")
+            st.markdown("---")
+            
             available_teams = sorted(year_df["team"].unique()) if "team" in year_df.columns else []
+
             selected_team = st.sidebar.selectbox("1️⃣ Select Program/Team", available_teams)
             
             selected_market_name = st.sidebar.selectbox("2️⃣ Select Prop Market", list(PROP_MARKETS.keys()))
