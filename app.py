@@ -77,36 +77,32 @@ try:
             if m["col"] in df.columns:
                 df[m["col"]] = df[m["col"]].fillna(0)
 
-        # 3. --- SIDEBAR CONTROLS WITH DYNAMIC SORTING ---
+        # 3. --- SIDEBAR CONTROLS ---
         st.sidebar.markdown("### 🎯 Filter Settings")
         
         # Step 1: Select Team first
         available_teams = sorted(df["team"].unique()) if "team" in df.columns else []
         selected_team = st.sidebar.selectbox("1️⃣ Select Program/Team", available_teams)
         
-        # Step 2: Select Prop Market next (so we know how to rank the players!)
+        # Step 2: Select Prop Market next
         selected_market_name = st.sidebar.selectbox("2️⃣ Select Prop Market", list(PROP_MARKETS.keys()))
         market_info = PROP_MARKETS[selected_market_name]
         stat_col = market_info["col"]
 
         # Step 3: DYNAMICALLY SORT AND FILTER PLAYERS BY STAT VOLUME
         filtered_team_df = df[df["team"] == selected_team]
-        
-        # Group by player name and find their total accumulated stats for the chosen market
         player_totals = filtered_team_df.groupby("player_name")[stat_col].sum().reset_index()
         
-        # CRITICAL FILTER: Remove players who have exactly 0 stats in this category
+        # Remove players with 0 volume in this category
         player_totals = player_totals[player_totals[stat_col] > 0]
-        
-        # Sort from highest to lowest volume
         player_totals = player_totals.sort_values(by=stat_col, ascending=False)
         ranked_players = player_totals["player_name"].tolist()
 
         if not ranked_players:
             st.sidebar.error(f"⚠️ No active players found with logged {selected_market_name} stats on this team.")
-            selected_player = None
+            st.info("💡 Try switching the market dropdown or selecting a different team program.")
         else:
-            # Custom labels showing their season total volume right inside the selection list!
+            # Map clean option formatting strings
             display_options = {}
             for _, r in player_totals.iterrows():
                 display_options[r["player_name"]] = f"{r['player_name']} ({r[stat_col]:.0f} Total {market_info['unit']})"
@@ -114,19 +110,13 @@ try:
             selected_player = st.sidebar.selectbox(
                 "3️⃣ Select Player Profile", 
                 ranked_players,
-                format_func=lambda x: display_options.get(x, x),
-                help="Ranked from highest production volume to lowest. 0-stat lines hidden."
+                format_func=lambda x: display_options.get(x, x)
             )
 
-        if selected_player:
             prop_line = st.sidebar.slider(f"Sportsbook Line Mark", min_value=0.0, max_value=market_info["max"], value=market_info["default"], step=market_info["step"])
 
-            # Isolate player entries
-            player_df = df[df["player_name"] == selected_player].sort_values(by="week")
-            
-            # 4. --- BRANDING EXECUTION ---
+            # 4. --- BRANDING & HEADER DISPLAY ---
             brand = TEAM_BRANDING.get(selected_team, DEFAULT_BRAND)
-
             st.markdown(f"""
                 <style>
                     div[data-testid="stMetricValue"] {{ color: {brand['primary']} !important; }}
@@ -134,8 +124,7 @@ try:
                 </style>
             """, unsafe_allow_html=True)
 
-            # Header Block
-            col_logo, col_title = st.columns([1, 5])
+            col_logo, col_title = st.columns([1, 6])
             with col_logo:
                 st.image(brand["logo"], width=90)
             with col_title:
@@ -146,10 +135,12 @@ try:
                     </div>
                 """, unsafe_allow_html=True)
 
-            # Analytics Math
+            # 5. --- ANALYTICS MATHEMATICS ---
+            player_df = df[df["player_name"] == selected_player].sort_values(by="week")
             total_games = len(player_df)
             avg_stat = player_df[stat_col].mean() if total_games > 0 else 0
             median_stat = player_df[stat_col].median() if total_games > 0 else 0
+            
             overs = player_df[player_df[stat_col] > prop_line]
             over_count = len(overs)
             under_count = total_games - over_count
@@ -159,7 +150,7 @@ try:
             fair_over_odds = pct_to_american_odds(over_pct)
             fair_under_odds = pct_to_american_odds(under_pct)
             
-            # Metrics Output
+            # Metrics Row Display
             c1, c2, c3, c4 = st.columns(4)
             with c1: st.metric("Games Documented", f"{total_games}")
             with c2: st.metric("Season Average", f"{avg_stat:.1f} {market_info['unit']}")
@@ -168,7 +159,7 @@ try:
             
             st.markdown("---")
             
-            # Odds Displays
+            # 6. --- FAIR VALUE PROJECTIONS ---
             st.subheader(f"💸 Fair Value Implied Odds Calculation: {selected_market_name}")
             col_odds1, col_odds2 = st.columns(2)
             with col_odds1:
@@ -180,4 +171,10 @@ try:
                 
             st.markdown("---")
             
-            # Charting
+            # 7. --- CHARTING ---
+            st.subheader(f"📊 Historical Game Breakdown: {selected_market_name}")
+            player_df["Result"] = player_df[stat_col].apply(lambda x: "🟢 OVER" if x > prop_line else "🔴 UNDER")
+            
+            fig = px.bar(
+                player_df, x="opponent", y=stat_col, color="Result",
+                color_discrete_map={"🟢 OVER": brand["primary"], "🔴 UNDER": "#475569"}, 
