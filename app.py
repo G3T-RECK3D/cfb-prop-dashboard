@@ -10,7 +10,7 @@ st.markdown("---")
 
 # Secure connection setup to your live server database
 SUPABASE_URL = "https://parwalgtnfgzwaibjpoz.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBhcndhbGd0bmZnendhaWJqcG96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyMDY2NDksImV4cCI6MjEwMzc4MjY0OX0.ZJmfo07gK_u4aEDPSDTipK3i1pG4Zju0HQa_bofVkDA" # <-- Paste your long 'eyJ...' key here
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBhcndhbGd0bmZnendhaWJqcG96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyMDY2NDksImV4cCI6MjEwMzc4MjY0OX0.ZJmfo07gK_u4aEDPSDTipK3i1pG4Zju0HQa_bofVkDA" # <-- Remember to paste your long 'eyJ...' key here
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- HELPER FUNCTION: PERCENTAGE TO AMERICAN ODDS ---
@@ -34,10 +34,19 @@ try:
     if df.empty:
         st.warning("⚠️ Connected to Supabase, but your table appears to be empty!")
     else:
-        # 3. --- SIDEBAR CONTROLS ---
+        # 3. --- SIDEBAR CONTROLS (With Active Search Functionality) ---
         st.sidebar.header("🎯 Analytics Controls")
-        available_players = df["player_name"].unique()
-        selected_player = st.sidebar.selectbox("Select Player", available_players)
+        
+        # Sort names alphabetically for clean sorting
+        available_players = sorted(df["player_name"].unique())
+        
+        # This box now automatically allows active text typing to search your data instantly!
+        selected_player = st.sidebar.selectbox(
+            "Search / Select Player", 
+            available_players,
+            index=0, 
+            help="Type any player's name to filter your database immediately"
+        )
         
         player_df = df[df["player_name"] == selected_player].sort_values(by="week")
         
@@ -69,7 +78,7 @@ try:
         fair_over_odds = pct_to_american_odds(over_pct)
         fair_under_odds = pct_to_american_odds(under_pct)
         
-        # Main Display
+        # Main Display Metrics
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Games Logged", f"{total_games}")
         c2.metric("Season Average", f"{avg_stat:.1f} yds")
@@ -100,7 +109,7 @@ try:
         st.dataframe(player_df[["season", "week", "opponent", stat_col]], use_container_width=True)
         st.markdown("---")
 
-    # 6. --- NEW! NO-CODE DATA ENTRY EXPANDER FORM ---
+    # 6. --- MANUAL ENTRY FORM ---
     with st.expander("➕ Click Here to Add New Game Log Stats manually"):
         st.subheader("📋 Manual Stat Entry Form")
         with st.form("stat_form", clear_on_submit=True):
@@ -112,10 +121,9 @@ try:
                 new_team = st.text_input("Player's Team")
                 new_opp = st.text_input("Opponent")
             with col_f3:
-                new_year = st.number_input("Season", value=2026, step=1)
+                new_year = st.number_input("Season", value=2025, step=1)
                 new_wk = st.number_input("Week", value=1, step=1)
             with col_f4:
-                # Dynamically provide the primary stat box based on selection
                 if new_pos == "QB":
                     new_stat = st.number_input("Passing Yards", value=0, step=1)
                 elif new_pos == "WR":
@@ -129,7 +137,6 @@ try:
                 if not new_name or not new_team or not new_opp:
                     st.error("Please fill out the Player Name, Team, and Opponent fields before saving.")
                 else:
-                    # Construct the data payload dynamically mapping correct position stats
                     payload = {
                         "player_name": new_name,
                         "position": new_pos,
@@ -141,7 +148,6 @@ try:
                         "rush_yards": int(new_stat) if new_pos == "RB" else 0,
                         "rec_yards": int(new_stat) if new_pos == "WR" else 0
                     }
-                    # Send to Supabase
                     supabase.table("player_game_logs").insert(payload).execute()
                     st.success(f"🎉 Successfully saved stat log for {new_name} into your live database!")
                     st.toast("Database updated!")
