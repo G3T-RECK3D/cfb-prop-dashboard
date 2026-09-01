@@ -90,7 +90,7 @@ try:
         df["total_scrimmage"] = df["rush_yards"] + df["rec_yards"]
 
         # Structural UI Multi-tab separation
-        tab_analysis, tab_blank = st.tabs(["🎯 Single Player Analysis", "🆕 Blank Workbench Page"])
+        tab_analysis, tab_blank = st.tabs(["🎯 Single Player Analysis", "Opportunity & Opponent Matchup Matrix"])
 
         # Global Sidebar Filter Settings
         st.sidebar.markdown("### 🎯 Filter Settings")
