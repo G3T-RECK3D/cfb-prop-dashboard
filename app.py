@@ -3,18 +3,8 @@ import pandas as pd
 import plotly.express as px
 from supabase import create_client
 
-# 1. --- APP INITIALIZATION & THEME CONFIG ---
+# 1. --- APP INITIALIZATION & STYLING ---
 st.set_page_config(page_title="CFB Prop Analyzer", layout="wide", page_icon="🏈")
-
-# Core layout styling adjustments
-st.markdown("""
-    <style>
-        div[data-testid="stMetricValue"] { font-size: 36px; font-weight: bold; }
-        .stSelectbox label, .stSlider label { font-weight: bold !important; color: #f1f5f9 !important; }
-        h1, h2, h3 { color: #f1f5f9 !important; font-weight: 700 !important; }
-        hr { border-top: 1px solid #334155 !important; }
-    </style>
-""", unsafe_allow_html=True)
 
 st.title("🏈 College Football Player Prop Co-Pilot")
 st.markdown("##### *Advanced Historical Analysis & Fair Value Odds Engine*")
@@ -100,7 +90,6 @@ try:
 
         if not ranked_players:
             st.sidebar.error(f"⚠️ No active players found with logged {selected_market_name} stats on this team.")
-            st.info("💡 Try switching the market dropdown or selecting a different team program.")
         else:
             # Map clean option formatting strings
             display_options = {}
@@ -115,25 +104,15 @@ try:
 
             prop_line = st.sidebar.slider("Sportsbook Line Mark", min_value=0.0, max_value=market_info["max"], value=market_info["default"], step=market_info["step"])
 
-            # 4. --- BRANDING & HEADER DISPLAY ---
+            # 4. --- HEADER DISPLAY ---
             brand = TEAM_BRANDING.get(selected_team, DEFAULT_BRAND)
-            st.markdown(f"""
-                <style>
-                    div[data-testid="stMetricValue"] {{ color: {brand['primary']} !important; }}
-                    .branded-header {{ background-color: {brand['primary']}; color: {brand['text']}; padding: 18px; border-radius: 8px; margin-bottom: 20px; }}
-                </style>
-            """, unsafe_allow_html=True)
 
-            col_logo, col_title = st.columns()
+            col_logo, col_title = st.columns([1, 4])
             with col_logo:
                 st.image(brand["logo"], width=90)
             with col_title:
-                st.markdown(f"""
-                    <div class="branded-header">
-                        <h2 style='margin:0; color:{brand['text']} !important;'>{selected_player.upper()}</h2>
-                        <p style='margin:0; font-size:14px; opacity:0.85;'>{selected_team} | Season 2025 Analytics Dataset</p>
-                    </div>
-                """, unsafe_allow_html=True)
+                st.subheader(f"🏈 {selected_player.upper()}")
+                st.markdown(f"*{selected_team} | Season 2025 Analytics Dataset*")
 
             # 5. --- ANALYTICS MATHEMATICS ---
             player_df = df[df["player_name"] == selected_player].sort_values(by="week")
@@ -152,10 +131,10 @@ try:
             
             # Metrics Row Display
             c1, c2, c3, c4 = st.columns(4)
-            with c1: st.metric("Games Documented", f"{total_games}")
-            with c2: st.metric("Season Average", f"{avg_stat:.1f} {market_info['unit']}")
-            with c3: st.metric("Season Median", f"{median_stat:.1f} {market_info['unit']}")
-            with c4: st.metric("OVER Hit Rate 📈", f"{over_pct:.1f}%", delta=f"{over_count} Matches")
+            c1.metric("Games Documented", f"{total_games}")
+            c2.metric("Season Average", f"{avg_stat:.1f} {market_info['unit']}")
+            c3.metric("Season Median", f"{median_stat:.1f} {market_info['unit']}")
+            c4.metric("OVER Hit Rate 📈", f"{over_pct:.1f}%", delta=f"{over_count} Matches")
             
             st.markdown("---")
             
@@ -180,3 +159,19 @@ try:
                 x="opponent", 
                 y=stat_col, 
                 color="Result",
+                color_discrete_map={"🟢 OVER": brand["primary"], "🔴 UNDER": "#475569"}, 
+                text=stat_col, 
+                labels={stat_col: selected_market_name, "opponent": "Opponent"}
+            )
+            fig.add_hline(y=prop_line, line_dash="dash", line_color="#cbd5e1")
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#f1f5f9")
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # 8. --- SPREADSHEET TABLE ---
+            st.subheader("📄 Filtered Database Records")
+            show_cols = [c for c in ["season", "week", "opponent", stat_col] if c in player_df.columns]
+            st.dataframe(player_df[show_cols], use_container_width=True)
+
+except Exception as e:
+    st.error("❌ The dashboard server encountered an obstacle connecting to your database.")
+    st.code(e)
