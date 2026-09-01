@@ -113,7 +113,7 @@ try:
                 format_func=lambda x: display_options.get(x, x)
             )
 
-            prop_line = st.sidebar.slider(f"Sportsbook Line Mark", min_value=0.0, max_value=market_info["max"], value=market_info["default"], step=market_info["step"])
+            prop_line = st.sidebar.slider("Sportsbook Line Mark", min_value=0.0, max_value=market_info["max"], value=market_info["default"], step=market_info["step"])
 
             # 4. --- BRANDING & HEADER DISPLAY ---
             brand = TEAM_BRANDING.get(selected_team, DEFAULT_BRAND)
@@ -124,7 +124,7 @@ try:
                 </style>
             """, unsafe_allow_html=True)
 
-            col_logo, col_title = st.columns([1, 6])
+            col_logo, col_title = st.columns()
             with col_logo:
                 st.image(brand["logo"], width=90)
             with col_title:
@@ -176,5 +176,7 @@ try:
             player_df["Result"] = player_df[stat_col].apply(lambda x: "🟢 OVER" if x > prop_line else "🔴 UNDER")
             
             fig = px.bar(
-                player_df, x="opponent", y=stat_col, color="Result",
-                color_discrete_map={"🟢 OVER": brand["primary"], "🔴 UNDER": "#475569"}, 
+                player_df, 
+                x="opponent", 
+                y=stat_col, 
+                color="Result",
