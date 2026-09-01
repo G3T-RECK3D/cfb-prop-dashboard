@@ -88,7 +88,7 @@ try:
         # 3. --- SIDEBAR CONTROLS ---
         st.sidebar.markdown("### 🎯 Filter Settings")
         
-        # Step 0: Select Season Year
+        # Step 0: Select Season Year (Fixed the syntax here safely)
         available_years = sorted(df["season"].unique(), reverse=True) if "season" in df.columns else [2025]
         selected_year = st.sidebar.selectbox("📅 Select Season Year", available_years)
         
