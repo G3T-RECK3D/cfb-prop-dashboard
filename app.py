@@ -71,20 +71,20 @@ try:
     df = pd.DataFrame(response.data)
 
     if df.empty:
-        st.warning("⚠️ Connected to your database server, but your table appears to be empty!")
+        st.warning("🔄 Table layout established on live server. Awaiting records from your data collection loader...")
     else:
         for m in PROP_MARKETS.values():
             if m["col"] in df.columns:
                 df[m["col"]] = df[m["col"]].fillna(0)
 
-        # 3. --- SIDEBAR CONTROLS ---
+        # 3. --- SIDEBAR CONTROLS (Standard Alphabetic Multi-Tier) ---
         st.sidebar.markdown("### 🎯 Filter Settings")
         
         # Step 1: Select Team
         available_teams = sorted(df["team"].unique()) if "team" in df.columns else []
         selected_team = st.sidebar.selectbox("1️⃣ Select Program/Team", available_teams)
         
-        # Step 2: Select Player Profile (Displays standard, clean alphabetical roster)
+        # Step 2: Select Player Profile (Filtered cleanly to only show that team's alphabetical roster)
         filtered_team_df = df[df["team"] == selected_team]
         team_players = sorted(filtered_team_df["player_name"].unique())
         
