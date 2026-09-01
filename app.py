@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 from supabase import create_client
 
-# 1. --- APP INITIALIZATION & STYLING ---
+# 1. --- APP INITIALIZATION & THEME CONFIG ---
 st.set_page_config(page_title="CFB Prop Analyzer", layout="wide", page_icon="🏈")
 
 st.markdown("""
@@ -24,25 +24,27 @@ SUPABASE_URL = "https://parwalgtnfgzwaibjpoz.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBhcndhbGd0bmZnendhaWJqcG96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyMDY2NDksImV4cCI6MjEwMzc4MjY0OX0.ZJmfo07gK_u4aEDPSDTipK3i1pG4Zju0HQa_bofVkDA"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# BRANDING DICTIONARY MAP - Updated with fully accessible public logo templates
+# BRANDING DICTIONARY MAP
 TEAM_BRANDING = {
-    "Alabama": {"primary": "#9E1B32", "text": "#FFFFFF", "logo": "https://sportslogos.net"},
-    "Georgia": {"primary": "#BA0C2F", "text": "#FFFFFF", "logo": "https://sportslogos.net"},
-    "Texas": {"primary": "#BF5700", "text": "#FFFFFF", "logo": "https://sportslogos.net"},
-    "Ohio State": {"primary": "#BB0000", "text": "#FFFFFF", "logo": "https://sportslogos.net"},
-    "Oregon": {"primary": "#154734", "text": "#FFFFFF", "logo": "https://sportslogos.net"},
-    "Penn State": {"primary": "#041E42", "text": "#FFFFFF", "logo": "https://sportslogos.net"},
-    "Miami": {"primary": "#F47321", "text": "#FFFFFF", "logo": "https://sportslogos.net"},
-    "Clemson": {"primary": "#F56600", "text": "#FFFFFF", "logo": "https://sportslogos.net"},
-    "Tennessee": {"primary": "#FF8200", "text": "#FFFFFF", "logo": "https://sportslogos.net"},
-    "LSU": {"primary": "#582C83", "text": "#FFFFFF", "logo": "https://sportslogos.net"},
-    "Ole Miss": {"primary": "#CE1126", "text": "#FFFFFF", "logo": "https://sportslogos.net"},
-    "Colorado": {"primary": "#CFB87C", "text": "#000000", "logo": "https://sportslogos.net"},
-    "Boise State": {"primary": "#0033A0", "text": "#FFFFFF", "logo": "https://sportslogos.net"},
-    "Notre Dame": {"primary": "#0C2340", "text": "#FFFFFF", "logo": "https://sportslogos.net"},
-    "USC": {"primary": "#990000", "text": "#FFFFFF", "logo": "https://sportslogos.net"}
+    "Alabama": {"primary": "#9E1B32", "emoji": "🐘"},
+    "Georgia": {"primary": "#BA0C2F", "emoji": "🐶"},
+    "Texas": {"primary": "#BF5700", "emoji": "🤘"},
+    "Ohio State": {"primary": "#BB0000", "emoji": "🌰"},
+    "Oregon": {"primary": "#154734", "emoji": "🦆"},
+    "Penn State": {"primary": "#041E42", "emoji": "🦁"},
+    "Miami": {"primary": "#F47321", "emoji": "🙌"},
+    "Clemson": {"primary": "#F56600", "emoji": "🐅"},
+    "Tennessee": {"primary": "#FF8200", "emoji": "🍊"},
+    "LSU": {"primary": "#582C83", "emoji": "🐯"},
+    "Ole Miss": {"primary": "#CE1126", "emoji": "🦈"},
+    "Colorado": {"primary": "#CFB87C", "emoji": "🦬"},
+    "Boise State": {"primary": "#0033A0", "emoji": "🐴"},
+    "Notre Dame": {"primary": "#0C2340", "emoji": "🍀"},
+    "USC": {"primary": "#990000", "emoji": "⚔️"},
+    "Stanford": {"primary": "#8C1515", "emoji": "🌲"},
+    "Hawaii": {"primary": "#024731", "emoji": "🌈"}
 }
-DEFAULT_BRAND = {"primary": "#1e293b", "text": "#f8fafc", "logo": "https://sportslogos.net"}
+DEFAULT_BRAND = {"primary": "#1e293b", "emoji": "🏈"}
 
 # HELPER FUNCTION: PERCENTAGE TO AMERICAN ODDS
 def pct_to_american_odds(percentage):
@@ -79,36 +81,38 @@ try:
         # 3. --- SIDEBAR CONTROLS ---
         st.sidebar.markdown("### 🎯 Filter Settings")
         
-        available_teams = sorted(df["team"].unique()) if "team" in df.columns else []
+        # --- DYNAMIC SEASON YEAR SELECTOR ---
+        available_years = sorted(df["season"].unique(), reverse=True) if "season" in df.columns else [2025]
+        selected_year = st.sidebar.selectbox("📅 Select Season Year", available_years)
+        
+        # Filter whole framework dataset by the chosen year baseline first
+        year_df = df[df["season"] == selected_year]
+        
+        # Step 1: Select Team based on chosen year
+        available_teams = sorted(year_df["team"].unique()) if "team" in year_df.columns else []
         selected_team = st.sidebar.selectbox("1️⃣ Select Program/Team", available_teams)
         
-        filtered_team_df = df[df["team"] == selected_team]
+        # Step 2: Select Player Profile matching team & year
+        filtered_team_df = year_df[year_df["team"] == selected_team]
         team_players = sorted(filtered_team_df["player_name"].unique())
         
         selected_player = st.sidebar.selectbox("2️⃣ Select Player Profile", team_players)
         
+        # Step 3: Select Market
         selected_market_name = st.sidebar.selectbox("3️⃣ Select Prop Market", list(PROP_MARKETS.keys()))
         market_info = PROP_MARKETS[selected_market_name]
         stat_col = market_info["col"]
 
         prop_line = st.sidebar.slider("Sportsbook Line Mark", min_value=0.0, max_value=market_info["max"], value=market_info["default"], step=market_info["step"])
 
-        # 4. --- HEADER DISPLAY SAFETY CHECK ---
+        # 4. --- HEADER DISPLAY ---
         brand = TEAM_BRANDING.get(selected_team, DEFAULT_BRAND)
 
-        col_logo, col_title = st.columns([1, 4]) # Set wide layout spacing ratio explicitly
-        with col_logo:
-            # Wrap image loader inside a secure block so broken signatures can never stall the layout
-            try:
-                st.image(brand["logo"], width=85)
-            except:
-                st.title("🏈") # Dynamic visual emoji fallback if host connection blocks
-        with col_title:
-            st.subheader(f"{selected_player.upper()}")
-            st.markdown(f"*{selected_team} | Season 2025 Analytics Dataset*")
+        st.subheader(f"{brand['emoji']} {selected_player.upper()}")
+        st.markdown(f"*{selected_team} | Season {selected_year} Analytics Dataset*")
 
         # 5. --- ANALYTICS MATHEMATICS ---
-        player_df = df[df["player_name"] == selected_player].sort_values(by="week")
+        player_df = year_df[year_df["player_name"] == selected_player].sort_values(by="week")
         total_games = len(player_df)
         avg_stat = player_df[stat_col].mean() if total_games > 0 else 0
         median_stat = player_df[stat_col].median() if total_games > 0 else 0
@@ -116,6 +120,7 @@ try:
         overs = player_df[player_df[stat_col] > prop_line]
         over_count = len(overs)
         under_count = total_games - over_count
+        
         over_pct = (over_count / total_games * 100) if total_games > 0 else 0
         under_pct = (under_count / total_games * 100) if total_games > 0 else 0
         
