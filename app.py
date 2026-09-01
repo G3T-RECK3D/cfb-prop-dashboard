@@ -10,11 +10,14 @@ st.markdown("""
     <style>
         div[data-testid="stMetricValue"] { font-size: 36px; font-weight: bold; }
         .stSelectbox label, .stSlider label { font-weight: bold !important; color: #f1f5f9 !important; }
-        h1, h2, h3, h4 { color: #f1f5f9 !important; font-weight: 700 !important; }
+        h1, h2, h3 { color: #f1f5f9 !important; font-weight: 700 !important; }
         hr { border-top: 1px solid #334155 !important; }
-        .matchup-card { background-color: #1e293b; padding: 20px; border-radius: 8px; border: 1px solid #475569; margin-bottom: 15px; }
     </style>
 """, unsafe_allow_html=True)
+
+st.title("🏈 College Football Player Prop Co-Pilot")
+st.markdown("##### *Advanced Historical Analysis & Fair Value Odds Engine*")
+st.markdown("---")
 
 # Secure connection setup
 SUPABASE_URL = "https://parwalgtnfgzwaibjpoz.supabase.co"
@@ -23,33 +26,36 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # BRANDING DICTIONARY MAP
 TEAM_BRANDING = {
-    "Alabama": {"primary": "#9E1B32", "emoji": "🐘"}, "Georgia": {"primary": "#BA0C2F", "emoji": "🐶"},
-    "Texas": {"primary": "#BF5700", "emoji": "🤘"}, "Ohio State": {"primary": "#BB0000", "emoji": "🌰"},
-    "Oregon": {"primary": "#154734", "emoji": "🦆"}, "Penn State": {"primary": "#041E42", "emoji": "🦁"},
-    "Miami": {"primary": "#F47321", "emoji": "🙌"}, "Clemson": {"primary": "#F56600", "emoji": "🐅"},
-    "Tennessee": {"primary": "#FF8200", "emoji": "🍊"}, "LSU": {"primary": "#582C83", "emoji": "🐯"},
-    "Ole Miss": {"primary": "#CE1126", "emoji": "🦈"}, "Colorado": {"primary": "#CFB87C", "emoji": "🦬"},
-    "Boise State": {"primary": "#0033A0", "emoji": "🐴"}, "Notre Dame": {"primary": "#0C2340", "emoji": "🍀"},
-    "USC": {"primary": "#990000", "emoji": "⚔️"}, "Stanford": {"primary": "#8C1515", "emoji": "🌲"},
-    "Hawaii": {"primary": "#024731", "emoji": "🌈"}, "Iowa State": {"primary": "#C8102E", "emoji": "🌪️"},
-    "Kansas State": {"primary": "#512888", "emoji": "😼"}, "Kansas": {"primary": "#0051BA", "emoji": "🐦"},
-    "Fresno State": {"primary": "#D31145", "emoji": "🐾"}, "UNLV": {"primary": "#CF142B", "emoji": "⚔️"},
-    "Sam Houston": {"primary": "#F05A28", "emoji": "🍊"}, "Western Kentucky": {"primary": "#E31837", "emoji": "🔴"},
-    "Eastern Michigan": {"primary": "#006633", "emoji": "🦅"}, "New Mexico State": {"primary": "#862633", "emoji": "🤠"},
-    "San Jose State": {"primary": "#0055A5", "emoji": "⚔️"}, "North Carolina": {"primary": "#7BAFD4", "emoji": "🐏"},
-    "Memphis": {"primary": "#003087", "emoji": "🐯"}, "Sacramento State": {"primary": "#004B49", "emoji": "🐝"},
-    "Florida State": {"primary": "#78243C", "emoji": "🏹"}, "TCU": {"primary": "#4D1979", "emoji": "🐸"},
-    "North Dakota State": {"primary": "#0A5640", "emoji": "🦬"}, "Virginia": {"primary": "#232D4B", "emoji": "⚔️"},
-    "Jacksonville State": {"primary": "#CC0000", "emoji": "🐓"}, "NC State": {"primary": "#CC0000", "emoji": "🐺"}
+    "Alabama": {"primary": "#9E1B32", "emoji": "🐘"},
+    "Georgia": {"primary": "#BA0C2F", "emoji": "🐶"},
+    "Texas": {"primary": "#BF5700", "emoji": "🤘"},
+    "Ohio State": {"primary": "#BB0000", "emoji": "🌰"},
+    "Oregon": {"primary": "#154734", "emoji": "🦆"},
+    "Penn State": {"primary": "#041E42", "emoji": "🦁"},
+    "Miami": {"primary": "#F47321", "emoji": "🙌"},
+    "Clemson": {"primary": "#F56600", "emoji": "🐅"},
+    "Tennessee": {"primary": "#FF8200", "emoji": "🍊"},
+    "LSU": {"primary": "#582C83", "emoji": "🐯"},
+    "Ole Miss": {"primary": "#CE1126", "emoji": "🦈"},
+    "Colorado": {"primary": "#CFB87C", "emoji": "🦬"},
+    "Boise State": {"primary": "#0033A0", "emoji": "🐴"},
+    "Notre Dame": {"primary": "#0C2340", "emoji": "🍀"},
+    "USC": {"primary": "#990000", "emoji": "⚔️"},
+    "Stanford": {"primary": "#8C1515", "emoji": "🌲"},
+    "Hawaii": {"primary": "#024731", "emoji": "🌈"}
 }
 DEFAULT_BRAND = {"primary": "#1e293b", "emoji": "🏈"}
 
+# HELPER FUNCTION: PERCENTAGE TO AMERICAN ODDS
 def pct_to_american_odds(percentage):
     if percentage >= 100: return "-10000"
     if percentage <= 0: return "+10000"
     if percentage > 50:
-        return f"{int(-((percentage) / (100 - percentage)) * 100)}"
-    return f"+{int(((100 - percentage) / percentage) * 100)}"
+        odds = int(-((percentage) / (100 - percentage)) * 100)
+        return f"{odds}"
+    else:
+        odds = int(((100 - percentage) / percentage) * 100)
+        return f"+{odds}"
 
 PROP_MARKETS = {
     "Passing Yards":   {"col": "pass_yards", "max": 500.0, "default": 249.5, "step": 1.0, "unit": "Yds"},
@@ -61,113 +67,109 @@ PROP_MARKETS = {
 }
 
 try:
+    # 2. --- RETRIEVE BASE ROWS ---
     response = supabase.table("player_game_logs").select("*").execute()
     df = pd.DataFrame(response.data)
 
     if df.empty:
-        st.warning("🔄 Awaiting data from your collection loops...")
+        st.warning("🔄 Table layout established on live server. Awaiting records from your data collection loader...")
     else:
         for m in PROP_MARKETS.values():
             if m["col"] in df.columns:
                 df[m["col"]] = df[m["col"]].fillna(0)
 
-        # 🗺️ --- MULTI-PAGE NAVIGATION CONTROLS ---
-        st.sidebar.markdown("### 🗺️ Navigation Controls")
-        app_page = st.sidebar.radio("Go To Dashboard Page:", [
-            "🎯 Single Player Analysis", 
-            "🏆 National Stat Leaderboards",
-            "⚔️ Team Offense vs Defense Ranker"
-        ])
-        st.sidebar.markdown("---")
-
-        available_years = sorted(df["season"].unique(), reverse=True) if "season" in df.columns else [2026]
+        # 3. --- SIDEBAR CONTROLS ---
+        st.sidebar.markdown("### 🎯 Filter Settings")
+        
+        # --- DYNAMIC SEASON YEAR SELECTOR ---
+        available_years = sorted(df["season"].unique(), reverse=True) if "season" in df.columns else [2025]
         selected_year = st.sidebar.selectbox("📅 Select Season Year", available_years)
+        
+        # Filter whole framework dataset by the chosen year baseline first
         year_df = df[df["season"] == selected_year]
+        
+        # Step 1: Select Team based on chosen year
+        available_teams = sorted(year_df["team"].unique()) if "team" in year_df.columns else []
+        selected_team = st.sidebar.selectbox("1️⃣ Select Program/Team", available_teams)
+        
+        # Step 2: Select Player Profile matching team & year
+        filtered_team_df = year_df[year_df["team"] == selected_team]
+        team_players = sorted(filtered_team_df["player_name"].unique())
+        
+        selected_player = st.sidebar.selectbox("2️⃣ Select Player Profile", team_players)
+        
+        # Step 3: Select Market
+        selected_market_name = st.sidebar.selectbox("3️⃣ Select Prop Market", list(PROP_MARKETS.keys()))
+        market_info = PROP_MARKETS[selected_market_name]
+        stat_col = market_info["col"]
 
-        # ==========================================
-        # ⚔️ NEW PAGE: TEAM OFFENSE VS DEFENSE RANKER
-        # ==========================================
-        if app_page == "⚔️ Team Offense vs Defense Ranker":
-            st.header(f"⚔️ {selected_year} Team Efficiency Matchup Board")
-            st.markdown("---")
-            
-            selected_mode = st.selectbox("Select Matchup Market Category:", ["Passing Efficiency", "Rushing Efficiency"])
-            metric_col = "pass_yards" if selected_mode == "Passing Efficiency" else "rush_yards"
-            
-            # --- 1. COMPUTE TOTAL OFFENSIVE RANKS ---
-            off_df = year_df.groupby("team")[metric_col].sum().reset_index()
-            off_df = off_df.sort_values(by=metric_col, ascending=False).reset_index(drop=True)
-            off_df.index += 1
-            off_df["off_rank"] = off_df.index
-            
-            # --- 2. COMPUTE TOTAL DEFENSIVE RANKS (Total yards allowed to opposing teams) ---
-            def_df = year_df.groupby("opponent")[metric_col].sum().reset_index()
-            def_df = def_df.rename(columns={"opponent": "team", metric_col: "yards_allowed"})
-            # Fewer yards allowed = Better Defense (Ascending Sort)
-            def_df = def_df.sort_values(by="yards_allowed", ascending=True).reset_index(drop=True)
-            def_df.index += 1
-            def_df["def_rank"] = def_df.index
+        prop_line = st.sidebar.slider("Sportsbook Line Mark", min_value=0.0, max_value=market_info["max"], value=market_info["default"], step=market_info["step"])
 
-            # Merge tables cleanly
-            team_master_ranks = pd.merge(off_df, def_df, on="team", how="outer").fillna(99)
-            
-            # --- 3. INTERACTIVE MATCHUP SPLIT ---
-            st.subheader("🏈 Evaluate Upcoming Gridiron Advantages")
-            col_teamA, col_teamB = st.columns(2)
-            
-            all_teams_list = sorted(year_df["team"].unique()) if not year_df.empty else []
-            
-            with col_teamA:
-                st.markdown("### 🏟️ Team A (Offense)")
-                team_a = st.selectbox("Select Offensive Team:", all_teams_list, index=0 if len(all_teams_list) > 0 else 0, key="team_a_sel")
-                
-                a_data = team_master_ranks[team_master_ranks["team"] == team_a]
-                if not a_data.empty:
-                    st.markdown(f"""
-                    <div class="matchup-card">
-                        <h4>{team_a} Metrics</h4>
-                        <p>📈 <b>Offensive National Rank:</b> #{int(a_data['off_rank'].values[0])}</p>
-                        <p>📊 Total Gained: {int(a_data[metric_col].values[0])} Yds</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-            with col_teamB:
-                st.markdown("### 🛡️ Team B (Defense)")
-                team_b = st.selectbox("Select Defensive Team:", all_teams_list, index=min(1, len(all_teams_list)-1), key="team_b_sel")
-                
-                b_data = team_master_ranks[team_master_ranks["team"] == team_b]
-                if not b_data.empty:
-                    st.markdown(f"""
-                    <div class="matchup-card">
-                        <h4>{team_b} Metrics</h4>
-                        <p>🛡️ <b>Defensive National Rank:</b> #{int(b_data['def_rank'].values[0])}</p>
-                        <p>🛑 Total Allowed: {int(b_data['yards_allowed'].values[0])} Yds</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+        # 4. --- HEADER DISPLAY ---
+        brand = TEAM_BRANDING.get(selected_team, DEFAULT_BRAND)
 
-            # --- 4. DATA MATRIX DISPLAY ---
-            st.markdown("---")
-            st.subheader(f"📄 Full National Efficiency Standing Sheet ({selected_year})")
-            
-            display_rank_df = team_master_ranks.rename(columns={
-                "team": "School/Program",
-                metric_col: "Total Offense Gained (Yds)",
-                "off_rank": "Offense Rank",
-                "yards_allowed": "Total Defense Allowed (Yds)",
-                "def_rank": "Defense Rank"
-            })
-            st.dataframe(display_rank_df[["School/Program", "Offense Rank", "Total Offense Gained (Yds)", "Defense Rank", "Total Defense Allowed (Yds)"]], use_container_width=True)
+        st.subheader(f"{brand['emoji']} {selected_player.upper()}")
+        st.markdown(f"*{selected_team} | Season {selected_year} Analytics Dataset*")
 
-        # ==========================================
-        # 🏆 PAGE: NATIONAL LEADERBOARDS RANKINGS
-        # ==========================================
-        elif app_page == "🏆 National Stat Leaderboards":
-            st.header(f"🏆 {selected_year} National Player Rankings & Leaderboards")
-            st.markdown("---")
+        # 5. --- ANALYTICS MATHEMATICS ---
+        player_df = year_df[year_df["player_name"] == selected_player].sort_values(by="week")
+        total_games = len(player_df)
+        avg_stat = player_df[stat_col].mean() if total_games > 0 else 0
+        median_stat = player_df[stat_col].median() if total_games > 0 else 0
+        
+        overs = player_df[player_df[stat_col] > prop_line]
+        over_count = len(overs)
+        under_count = total_games - over_count
+        
+        over_pct = (over_count / total_games * 100) if total_games > 0 else 0
+        under_pct = (under_count / total_games * 100) if total_games > 0 else 0
+        
+        fair_over_odds = pct_to_american_odds(over_pct)
+        fair_under_odds = pct_to_american_odds(under_pct)
+        
+        # Metrics Row Display
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Games Documented", f"{total_games}")
+        c2.metric("Season Average", f"{avg_stat:.1f} {market_info['unit']}")
+        c3.metric("Season Median", f"{median_stat:.1f} {market_info['unit']}")
+        c4.metric("OVER Hit Rate 📈", f"{over_pct:.1f}%", delta=f"{over_count} Matches")
+        
+        st.markdown("---")
+        
+        # 6. --- FAIR VALUE PROJECTIONS ---
+        st.subheader(f"💸 Fair Value Implied Odds Calculation: {selected_market_name}")
+        col_odds1, col_odds2 = st.columns(2)
+        with col_odds1:
+            st.markdown(f"#### 📈 Target Over: **{prop_line} {market_info['unit']}**")
+            st.metric(label="Model Implied Price", value=fair_over_odds)
+        with col_odds2:
+            st.markdown(f"#### 📉 Target Under: **{prop_line} {market_info['unit']}**")
+            st.metric(label="Model Implied Price", value=fair_under_odds)
             
-            selected_rank_market = st.selectbox("Select Stat Category to Rank:", list(PROP_MARKETS.keys()), index=0)
-            rank_col = PROP_MARKETS[selected_rank_market]["col"]
-            rank_unit = PROP_MARKETS[selected_rank_market]["unit"]
-            
-            leader_df = year_df.groupby(["player_name", "team"])[rank_col].sum().reset_index()
-            leader_df = leader_df[leader_df[rank_col] > 0]
+        st.markdown("---")
+        
+        # 7. --- CHARTING ---
+        st.subheader(f"📊 Historical Game Breakdown: {selected_market_name}")
+        player_df["Result"] = player_df[stat_col].apply(lambda x: "🟢 OVER" if x > prop_line else "🔴 UNDER")
+        
+        fig = px.bar(
+            player_df, 
+            x="opponent", 
+            y=stat_col, 
+            color="Result",
+            color_discrete_map={"🟢 OVER": brand["primary"], "🔴 UNDER": "#475569"}, 
+            text=stat_col, 
+            labels={stat_col: selected_market_name, "opponent": "Opponent"}
+        )
+        fig.add_hline(y=prop_line, line_dash="dash", line_color="#cbd5e1")
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#f1f5f9")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 8. --- SPREADSHEET TABLE ---
+        st.subheader("📄 Filtered Database Records")
+        show_cols = [c for c in ["season", "week", "opponent", stat_col] if c in player_df.columns]
+        st.dataframe(player_df[show_cols], use_container_width=True)
+
+except Exception as e:
+    st.error("❌ The dashboard server encountered an obstacle connecting to your database.")
+    st.code(e)
