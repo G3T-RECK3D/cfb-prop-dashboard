@@ -104,15 +104,17 @@ try:
 
             prop_line = st.sidebar.slider("Sportsbook Line Mark", min_value=0.0, max_value=market_info["max"], value=market_info["default"], step=market_info["step"])
 
-            # 4. --- HEADER DISPLAY ---
+            # 4. --- BRANDED TOP BANNER HEADER ---
             brand = TEAM_BRANDING.get(selected_team, DEFAULT_BRAND)
-
-            col_logo, col_title = st.columns([1, 4])
+            
+            # Use a weighted structural ratio layout to isolate the logo container box cleanly
+            col_logo, col_title = st.columns([1, 7])
             with col_logo:
-                st.image(brand["logo"], width=90)
+                st.image(brand["logo"], width=80)
             with col_title:
                 st.subheader(f"🏈 {selected_player.upper()}")
                 st.markdown(f"*{selected_team} | Season 2025 Analytics Dataset*")
+
 
             # 5. --- ANALYTICS MATHEMATICS ---
             player_df = df[df["player_name"] == selected_player].sort_values(by="week")
