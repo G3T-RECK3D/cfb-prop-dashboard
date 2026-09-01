@@ -42,7 +42,14 @@ TEAM_BRANDING = {
     "Notre Dame": {"primary": "#0C2340", "emoji": "🍀"},
     "USC": {"primary": "#990000", "emoji": "⚔️"},
     "Stanford": {"primary": "#8C1515", "emoji": "🌲"},
-    "Hawaii": {"primary": "#024731", "emoji": "🌈"}
+    "Hawaii": {"primary": "#024731", "emoji": "🌈"},
+    "Iowa State": {"primary": "#C8102E", "emoji": "🌪️"},
+    "Kansas State": {"primary": "#512888", "emoji": "😼"},
+    "Kansas": {"primary": "#0051BA", "emoji": "🐦"},
+    "Fresno State": {"primary": "#D31145", "emoji": "🐾"},
+    "UNLV": {"primary": "#CF142B", "emoji": "⚔️"},
+    "Sam Houston": {"primary": "#F05A28", "emoji": "🍊"},
+    "Western Kentucky": {"primary": "#E31837", "emoji": "🔴"}
 }
 DEFAULT_BRAND = {"primary": "#1e293b", "emoji": "🏈"}
 
@@ -81,95 +88,113 @@ try:
         # 3. --- SIDEBAR CONTROLS ---
         st.sidebar.markdown("### 🎯 Filter Settings")
         
-        # --- DYNAMIC SEASON YEAR SELECTOR ---
+        # Step 0: Select Season Year
         available_years = sorted(df["season"].unique(), reverse=True) if "season" in df.columns else [2025]
         selected_year = st.sidebar.selectbox("📅 Select Season Year", available_years)
         
-        # Filter whole framework dataset by the chosen year baseline first
+        # Filter the dataset by year first
         year_df = df[df["season"] == selected_year]
         
         # Step 1: Select Team based on chosen year
         available_teams = sorted(year_df["team"].unique()) if "team" in year_df.columns else []
         selected_team = st.sidebar.selectbox("1️⃣ Select Program/Team", available_teams)
         
-        # Step 2: Select Player Profile matching team & year
-        filtered_team_df = year_df[year_df["team"] == selected_team]
-        team_players = sorted(filtered_team_df["player_name"].unique())
-        
-        selected_player = st.sidebar.selectbox("2️⃣ Select Player Profile", team_players)
-        
-        # Step 3: Select Market
-        selected_market_name = st.sidebar.selectbox("3️⃣ Select Prop Market", list(PROP_MARKETS.keys()))
+        # Step 2: Select Prop Market (Moved up so it knows what stat to rank the players by!)
+        selected_market_name = st.sidebar.selectbox("2️⃣ Select Prop Market", list(PROP_MARKETS.keys()))
         market_info = PROP_MARKETS[selected_market_name]
         stat_col = market_info["col"]
 
-        prop_line = st.sidebar.slider("Sportsbook Line Mark", min_value=0.0, max_value=market_info["max"], value=market_info["default"], step=market_info["step"])
+        # Step 3: DYNAMICALLY SORT AND FILTER PLAYERS BY CHOSEN MARKET VOLUME
+        filtered_team_df = year_df[year_df["team"] == selected_team]
+        
+        # Sum total accumulated production for each player under this specific team
+        player_totals = filtered_team_df.groupby("player_name")[stat_col].sum().reset_index()
+        
+        # Keep only the players who have recorded more than 0 stats in this specific category
+        player_totals = player_totals[player_totals[stat_col] > 0]
+        
+        # Order the dataframe from highest cumulative stats to lowest
+        player_totals = player_totals.sort_values(by=stat_col, ascending=False)
+        ranked_players = player_totals["player_name"].tolist()
 
-        # 4. --- HEADER DISPLAY ---
-        brand = TEAM_BRANDING.get(selected_team, DEFAULT_BRAND)
-
-        st.subheader(f"{brand['emoji']} {selected_player.upper()}")
-        st.markdown(f"*{selected_team} | Season {selected_year} Analytics Dataset*")
-
-        # 5. --- ANALYTICS MATHEMATICS ---
-        player_df = year_df[year_df["player_name"] == selected_player].sort_values(by="week")
-        total_games = len(player_df)
-        avg_stat = player_df[stat_col].mean() if total_games > 0 else 0
-        median_stat = player_df[stat_col].median() if total_games > 0 else 0
-        
-        overs = player_df[player_df[stat_col] > prop_line]
-        over_count = len(overs)
-        under_count = total_games - over_count
-        
-        over_pct = (over_count / total_games * 100) if total_games > 0 else 0
-        under_pct = (under_count / total_games * 100) if total_games > 0 else 0
-        
-        fair_over_odds = pct_to_american_odds(over_pct)
-        fair_under_odds = pct_to_american_odds(under_pct)
-        
-        # Metrics Row Display
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Games Documented", f"{total_games}")
-        c2.metric("Season Average", f"{avg_stat:.1f} {market_info['unit']}")
-        c3.metric("Season Median", f"{median_stat:.1f} {market_info['unit']}")
-        c4.metric("OVER Hit Rate 📈", f"{over_pct:.1f}%", delta=f"{over_count} Matches")
-        
-        st.markdown("---")
-        
-        # 6. --- FAIR VALUE PROJECTIONS ---
-        st.subheader(f"💸 Fair Value Implied Odds Calculation: {selected_market_name}")
-        col_odds1, col_odds2 = st.columns(2)
-        with col_odds1:
-            st.markdown(f"#### 📈 Target Over: **{prop_line} {market_info['unit']}**")
-            st.metric(label="Model Implied Price", value=fair_over_odds)
-        with col_odds2:
-            st.markdown(f"#### 📉 Target Under: **{prop_line} {market_info['unit']}**")
-            st.metric(label="Model Implied Price", value=fair_under_odds)
+        if not ranked_players:
+            st.sidebar.error(f"⚠️ No active roster lines with logged {selected_market_name} stats found on this team.")
+            selected_player = None
+        else:
+            # Map formatted display labels to show their season production right inside the selection list
+            display_options = {}
+            for _, r in player_totals.iterrows():
+                display_options[r["player_name"]] = f"{r['player_name']} ({r[stat_col]:.0f} Total {market_info['unit']})"
             
-        st.markdown("---")
-        
-        # 7. --- CHARTING ---
-        st.subheader(f"📊 Historical Game Breakdown: {selected_market_name}")
-        player_df["Result"] = player_df[stat_col].apply(lambda x: "🟢 OVER" if x > prop_line else "🔴 UNDER")
-        
-        fig = px.bar(
-            player_df, 
-            x="opponent", 
-            y=stat_col, 
-            color="Result",
-            color_discrete_map={"🟢 OVER": brand["primary"], "🔴 UNDER": "#475569"}, 
-            text=stat_col, 
-            labels={stat_col: selected_market_name, "opponent": "Opponent"}
-        )
-        fig.add_hline(y=prop_line, line_dash="dash", line_color="#cbd5e1")
-        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#f1f5f9")
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # 8. --- SPREADSHEET TABLE ---
-        st.subheader("📄 Filtered Database Records")
-        show_cols = [c for c in ["season", "week", "opponent", stat_col] if c in player_df.columns]
-        st.dataframe(player_df[show_cols], use_container_width=True)
+            selected_player = st.sidebar.selectbox(
+                "3️⃣ Select Player Profile", 
+                ranked_players,
+                format_func=lambda x: display_options.get(x, x),
+                help="Ranked from highest production volume to lowest. 0-stat lines hidden."
+            )
 
-except Exception as e:
-    st.error("❌ The dashboard server encountered an obstacle connecting to your database.")
-    st.code(e)
+        if ranked_players and selected_player:
+            prop_line = st.sidebar.slider("Sportsbook Line Mark", min_value=0.0, max_value=market_info["max"], value=market_info["default"], step=market_info["step"])
+
+            # 4. --- HEADER DISPLAY ---
+            brand = TEAM_BRANDING.get(selected_team, DEFAULT_BRAND)
+
+            st.subheader(f"{brand['emoji']} {selected_player.upper()}")
+            st.markdown(f"*{selected_team} | Season {selected_year} Analytics Dataset*")
+
+            # 5. --- ANALYTICS MATHEMATICS ---
+            player_df = year_df[year_df["player_name"] == selected_player].sort_values(by="week")
+            total_games = len(player_df)
+            avg_stat = player_df[stat_col].mean() if total_games > 0 else 0
+            median_stat = player_df[stat_col].median() if total_games > 0 else 0
+            
+            overs = player_df[player_df[stat_col] > prop_line]
+            over_count = len(overs)
+            under_count = total_games - over_count
+            
+            over_pct = (over_count / total_games * 100) if total_games > 0 else 0
+            under_pct = (under_count / total_games * 100) if total_games > 0 else 0
+            
+            fair_over_odds = pct_to_american_odds(over_pct)
+            fair_under_odds = pct_to_american_odds(under_pct)
+            
+            # Metrics Row Display
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Games Documented", f"{total_games}")
+            c2.metric("Season Average", f"{avg_stat:.1f} {market_info['unit']}")
+            c3.metric("Season Median", f"{median_stat:.1f} {market_info['unit']}")
+            c4.metric("OVER Hit Rate 📈", f"{over_pct:.1f}%", delta=f"{over_count} Matches")
+            
+            st.markdown("---")
+            
+            # 6. --- FAIR VALUE PROJECTIONS ---
+            st.subheader(f"💸 Fair Value Implied Odds Calculation: {selected_market_name}")
+            col_odds1, col_odds2 = st.columns(2)
+            with col_odds1:
+                st.markdown(f"#### 📈 Target Over: **{prop_line} {market_info['unit']}**")
+                st.metric(label="Model Implied Price", value=fair_over_odds)
+            with col_odds2:
+                st.markdown(f"#### 📉 Target Under: **{prop_line} {market_info['unit']}**")
+                st.metric(label="Model Implied Price", value=fair_under_odds)
+                
+            st.markdown("---")
+            
+            # 7. --- CHARTING ---
+            st.subheader(f"📊 Historical Game Breakdown: {selected_market_name}")
+            player_df["Result"] = player_df[stat_col].apply(lambda x: "🟢 OVER" if x > prop_line else "🔴 UNDER")
+            
+            fig = px.bar(
+                player_df, 
+                x="opponent", 
+                y=stat_col, 
+                color="Result",
+                color_discrete_map={"🟢 OVER": brand["primary"], "🔴 UNDER": "#475569"}, 
+                text=stat_col, 
+                labels={stat_col: selected_market_name, "opponent": "Opponent"}
+            )
+            fig.add_hline(y=prop_line, line_dash="dash", line_color="#cbd5e1")
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#f1f5f9")
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # 8. --- SPREADSHEET TABLE ---
+            st.subheader("📄 Filtered Database Records")
