@@ -174,9 +174,97 @@ try:
                     st.dataframe(player_df[show_cols], use_container_width=True)
                     
         with tab_blank:
-            st.header("🆕 Custom Workspace Workbench")
+            st.header("📈 Opportunity & Opponent Matchup Matrix")
+            st.markdown("##### *Analyze player volume metrics and compare stats against defensive matchups.*")
             st.markdown("---")
-            st.info("🎯 This is your clean, empty workbench page. Let me know what feature you want to build here next!")
+
+            # 1. Opponent Defense Aggregation
+            # Calculates defensive metrics by grouping game logs by the opponent defense
+            def_df = year_df.groupby("opponent").agg(
+                games_played=("week", "nunique"),
+                pass_yds_allowed=("pass_yards", "mean"),
+                rush_yds_allowed=("rush_yards", "mean"),
+                pass_att_allowed=("pass_att", "mean"),
+                rush_att_allowed=("rush_att", "mean")
+            ).reset_index()
+
+            # 2. Controls & Selectors
+            col_ctrl1, col_ctrl2 = st.columns(2)
+            with col_ctrl1:
+                selected_opp = st.selectbox("🛡️ Select Upcoming Opponent Defense", sorted(year_df["team"].unique()))
+            with col_ctrl2:
+                # Reuse player selected from main sidebar or pick locally
+                opp_player = st.selectbox("👤 Target Player for Matchup", ranked_players, index=0)
+
+            st.markdown("---")
+
+            # 3. Player Usage & Volume Metrics
+            st.subheader(f"📊 Volume & Usage Profile: {opp_player}")
+            p_df = year_df[year_df["player_name"] == opp_player].sort_values("week")
+            t_name = p_df["team"].iloc[0] if not p_df.empty else selected_team
+
+            # Compute Team Totals per week to calculate true Target & Carry Share
+            team_game_totals = year_df[year_df["team"] == t_name].groupby("week").agg(
+                team_pass_att=("pass_att", "sum"),
+                team_rush_att=("rush_att", "sum")
+            ).reset_index()
+
+            p_merged = pd.merge(p_df, team_game_totals, on="week", how="left")
+            p_merged["carry_share"] = (p_merged["rush_att"] / p_merged["team_rush_att"].replace(0, 1)) * 100
+            p_merged["pass_att_share"] = (p_merged["pass_att"] / p_merged["team_pass_att"].replace(0, 1)) * 100
+
+            u1, u2, u3, u4 = st.columns(4)
+            avg_carries = p_merged["rush_att"].mean()
+            avg_carry_share = p_merged["carry_share"].mean()
+            avg_pass_att = p_merged["pass_att"].mean()
+            avg_pass_share = p_merged["pass_att_share"].mean()
+
+            u1.metric("Avg Rush Att / Game", f"{avg_carries:.1f}")
+            u2.metric("Team Carry Share %", f"{avg_carry_share:.1f}%")
+            u3.metric("Avg Pass Att / Game", f"{avg_pass_att:.1f}")
+            u4.metric("Team Pass Att Share %", f"{avg_pass_share:.1f}%")
+
+            # Usage Visualization Chart
+            fig_usage = px.bar(
+                p_merged, x="opponent", y=["rush_att", "pass_att"],
+                barmode="group", title="Weekly Touches & Attempts Breakdown",
+                labels={"value": "Volume Count", "variable": "Metric", "opponent": "Opponent"}
+            )
+            fig_usage.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#f1f5f9")
+            st.plotly_chart(fig_usage, use_container_width=True)
+
+            st.markdown("---")
+
+            # 4. Opponent Defense Matchup Analysis
+            st.subheader(f"🛡️ Matchup Profile: {t_name} vs. {selected_opp} Defense")
+            
+            opp_stats = def_df[def_df["opponent"] == selected_opp]
+            
+            if not opp_stats.empty:
+                d_pass_yds = opp_stats["pass_yds_allowed"].values[0]
+                d_rush_yds = opp_stats["rush_yds_allowed"].values[0]
+
+                # Defensive Context Metrics
+                m1, m2 = st.columns(2)
+                m1.metric("Opponent Pass Yds Allowed / Game", f"{d_pass_yds:.1f} Yds")
+                m2.metric("Opponent Rush Yds Allowed / Game", f"{d_rush_yds:.1f} Yds")
+
+                # Opponent Ranking Heatmap across all logged defenses
+                st.markdown("##### 🏆 Defensive Rank Matrix (All Logged Opponents)")
+                def_df["Pass Yds Rank"] = def_df["pass_yds_allowed"].rank(ascending=False).astype(int)
+                def_df["Rush Yds Rank"] = def_df["rush_yds_allowed"].rank(ascending=False).astype(int)
+
+                st.dataframe(
+                    def_df.sort_values("pass_yds_allowed", ascending=False),
+                    column_config={
+                        "opponent": "Defense Program",
+                        "pass_yds_allowed": st.column_config.NumberColumn("Avg Pass Yds Allowed", format="%.1f"),
+                        "rush_yds_allowed": st.column_config.NumberColumn("Avg Rush Yds Allowed", format="%.1f")
+                    },
+                    use_container_width=True
+                )
+            else:
+                st.info(f"ℹ️ No defensive game records logged for {selected_opp} yet.")
                     
 except Exception as e:
     st.error("❌ The dashboard server encountered an obstacle connecting to your database.")
