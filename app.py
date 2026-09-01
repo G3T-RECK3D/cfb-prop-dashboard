@@ -11,7 +11,7 @@ st.markdown("##### *Advanced Historical Analysis & Fair Value Odds Engine*")
 st.markdown("---")
 
 # Secure connection setup
-SUPABASE_URL = "https://supabase.co"
+SUPABASE_URL = "https://parwalgtnfgzwaibjpoz.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBhcndhbGd0bmZnendhaWJqcG96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyMDY2NDksImV4cCI6MjEwMzc4MjY0OX0.ZJmfo07gK_u4aEDPSDTipK3i1pG4Zju0HQa_bofVkDA"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
