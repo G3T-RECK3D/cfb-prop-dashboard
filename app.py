@@ -262,8 +262,8 @@ try:
 
                 # Opponent Ranking Heatmap across all logged defenses
                 st.markdown("##### 🏆 Defensive Rank Matrix (All Logged Opponents)")
-                def_df["Pass Yds Rank"] = def_df["pass_yds_allowed"].rank(ascending=False).astype(int)
-                def_df["Rush Yds Rank"] = def_df["rush_yds_allowed"].rank(ascending=False).astype(int)
+                def_df["Pass Yds Rank"] = def_df["pass_yds_allowed"].rank(ascending=True).astype(int)
+                def_df["Rush Yds Rank"] = def_df["rush_yds_allowed"].rank(ascending=True).astype(int)
 
                 # Change the sort_values to sort by your new Rank column (1, 2, 3...)
                 st.dataframe(
