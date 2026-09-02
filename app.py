@@ -276,6 +276,25 @@ try:
             st.markdown("##### *Identify deep offensive and defensive advantages for the upcoming board.*")
             st.markdown("---")
 
+            st.markdown("### 🔍 Supabase Connection Diagnostics")
+
+            # Diagnostic 1: Raw API Query & Supabase Response Test
+            try:
+                raw_response = supabase.table("upcoming_schedule").select("*").execute()
+                st.write("1. **Raw Supabase Data Returned:**", raw_response.data)
+                st.write("2. **Row Count:**", len(raw_response.data) if raw_response.data else 0)
+            except Exception as diag_err:
+                st.error(f"❌ **API Error Querying 'upcoming_schedule':** {diag_err}")
+            
+            # Diagnostic 2: View Query Test (if you created normalized_upcoming_schedule)
+            try:
+                view_response = supabase.table("normalized_upcoming_schedule").select("*").execute()
+                st.write("3. **Normalized View Data Returned:**", view_response.data)
+            except Exception as view_err:
+                st.warning(f"⚠️ **Normalized View Status:** Not found or blocked ({view_err})")
+            
+            st.markdown("---")
+
             try:
                 sched_resp = supabase.table("upcoming_schedule").select("*").limit(10000).execute()
                 sched_df = pd.DataFrame(sched_resp.data)
