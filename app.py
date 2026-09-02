@@ -278,8 +278,137 @@ try:
             else:
                 st.info(f"ℹ️ No defensive game records logged for {selected_opp} yet.")
                     
-except Exception as e:
-    st.error("❌ The dashboard server encountered an obstacle connecting to your database.")
-    st.code(e)
+        # ==========================================
+        # TAB 3: 📅 PRE-GAME SLATE MISMATCH SCANNER
+        # ==========================================
+        with tab_slate:
+            st.header("📅 Pre-Game Slate Mismatch Scanner")
+            st.markdown("##### *Identify deep offensive and defensive advantages for the upcoming board.*")
+            st.markdown("---")
+
+            try:
+                # 1. Fetch live upcoming games from Supabase schedule reference table
+                sched_resp = supabase.table("upcoming_schedule").select("*").execute()
+                sched_df = pd.DataFrame(sched_resp.data)
+
+                if sched_df.empty:
+                    st.warning("⚠️ No upcoming games logged in your 'upcoming_schedule' table yet.")
+                else:
+                    # 2. Dynamic Football Week Selector
+                    available_weeks = sorted(sched_df["week"].unique())
+                    selected_week = st.selectbox("🏈 Choose Upcoming Slate Week", available_weeks, key="slate_week_sel")
+                    
+                    # Filter upcoming schedule rows down to selected week
+                    week_sched = sched_df[sched_df["week"] == selected_week]
+
+                    # Standardize home_team/away_team into balanced offensive perspectives
+                    home_view = week_sched[["week", "home_team", "away_team"]].rename(columns={"home_team": "team", "away_team": "opponent"})
+                    away_view = week_sched[["week", "away_team", "home_team"]].rename(columns={"away_team": "team", "home_team": "opponent"})
+                    weekly_matchups = pd.concat([home_view, away_view], ignore_index=True)
+
+                    # 3. ADVANCED PER-GAME MATHEMATICS (HISTORICAL LOGS ANALYSIS)
+                    # --- COMPUTE DEFENSIVE YARDS ALLOWED PER GAME ---
+                    game_defense = year_df.groupby(["opponent", "season", "week"]).agg(
+                        total_pass_yds=("pass_yards", "sum"),
+                        total_rush_yds=("rush_yards", "sum")
+                    ).reset_index()
+
+                    def_df = game_defense.groupby("opponent").agg(
+                        pass_yds_allowed=("total_pass_yds", "mean"),
+                        rush_yds_allowed=("total_rush_yds", "mean")
+                    ).reset_index()
+
+                    # Rank 1 = Stingiest Defense (Fewest Yards Allowed)
+                    def_df["Pass_Def_Rank"] = def_df["pass_yds_allowed"].rank(ascending=True).astype(int)
+                    def_df["Rush_Def_Rank"] = def_df["rush_yds_allowed"].rank(ascending=True).astype(int)
+
+                    # --- COMPUTE OFFENSIVE YARDS GAINED PER GAME (THE MISSING MATCHUP LINK) ---
+                    game_offense = year_df.groupby(["team", "season", "week"]).agg(
+                        total_pass_yds=("pass_yards", "sum"),
+                        total_rush_yds=("rush_yards", "sum")
+                    ).reset_index()
+
+                    off_df = game_offense.groupby("team").agg(
+                        pass_yds_gained=("total_pass_yds", "mean"),
+                        rush_yds_gained=("total_rush_yds", "mean")
+                    ).reset_index()
+
+                    # Rank 1 = Most Explosive Offense (Most Yards Gained)
+                    off_df["Pass_Off_Rank"] = off_df["pass_yds_gained"].rank(ascending=False).astype(int)
+                    off_df["Rush_Off_Rank"] = off_df["rush_yds_gained"].rank(ascending=False).astype(int)
+
+                    # 4. MERGE DATA FIELDS INTO MASTER ADVANTAGE SHEET
+                    matchup_summary = pd.merge(weekly_matchups, def_df, on="opponent", how="left")
+                    matchup_summary = pd.merge(matchup_summary, off_df, on="team", how="left")
+
+                    # Handle teams with clean fill values for pristine plotting
+                    fill_cols = ["pass_yds_allowed", "rush_yds_allowed", "pass_yds_gained", "rush_yds_gained"]
+                    for col in fill_cols:
+                        if col in matchup_summary.columns:
+                            matchup_summary[col] = matchup_summary[col].fillna(0)
+                    
+                    matchup_summary["Pass_Def_Rank"] = matchup_summary["Pass_Def_Rank"].fillna(99).astype(int)
+                    matchup_summary["Rush_Def_Rank"] = matchup_summary["Rush_Def_Rank"].fillna(99).astype(int)
+                    matchup_summary["Pass_Off_Rank"] = matchup_summary["Pass_Off_Rank"].fillna(99).astype(int)
+                    matchup_summary["Rush_Off_Rank"] = matchup_summary["Rush_Off_Rank"].fillna(99).astype(int)
+
+                    # Calculate Net Mismatch Severity (Higher Rank Difference = Massive Over Opportunity)
+                    matchup_summary["Net_Pass_Edge"] = matchup_summary["Pass_Def_Rank"] - matchup_summary["Pass_Off_Rank"]
+                    matchup_summary["Net_Rush_Edge"] = matchup_summary["Rush_Def_Rank"] - matchup_summary["Rush_Off_Rank"]
+
+                    # 5. TOP MISMATCH CALLOUT WINDOWS (SORTED BY TRUE NET EDGE SEVERITY)
+                    st.subheader(f"🔥 Top Projected Passing & Rushing Mismatches — Week {selected_week}")
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        st.markdown("#### 🎯 Passing Advantages (High Gained vs. Leaky Defense)")
+                        pass_mismatches = matchup_summary.sort_values(by="Net_Pass_Edge", ascending=False).head(3)
+                        
+                        if not pass_mismatches.empty and pass_mismatches["pass_yds_allowed"].sum() > 0:
+                            for _, row in pass_mismatches.iterrows():
+                                st.success(
+                                    f"🏈 **{row['team']}** vs. **{row['opponent']}**\n\n"
+                                    f"• Offense Passing Rank: **#{row['Pass_Off_Rank']}** ({row['pass_yds_gained']:.0f} Gained/G)\n\n"
+                                    f"• Defense Allowed Rank: **#{row['Pass_Def_Rank']}** ({row['pass_yds_allowed']:.0f} Allowed/G)\n\n"
+                                    f"• **Net Pass Advantage Score: +{row['Net_Pass_Edge']}**"
+                                )
+                        else:
+                            st.info("Awaiting historical passing efficiency samples to populate advantages board.")
+
+                    with col2:
+                        st.markdown("#### 🚜 Rushing Advantages (Power Ground vs. Soft Front)")
+                        rush_mismatches = matchup_summary.sort_values(by="Net_Rush_Edge", ascending=False).head(3)
+                        
+                        if not rush_mismatches.empty and rush_mismatches["rush_yds_allowed"].sum() > 0:
+                            for _, row in rush_mismatches.iterrows():
+                                st.success(
+                                    f"🚜 **{row['team']}** vs. **{row['opponent']}**\n\n"
+                                    f"• Offense Rushing Rank: **#{row['Rush_Off_Rank']}** ({row['rush_yds_gained']:.0f} Gained/G)\n\n"
+                                    f"• Defense Allowed Rank: **#{row['Rush_Def_Rank']}** ({row['rush_yds_allowed']:.0f} Allowed/G)\n\n"
+                                    f"• **Net Rush Advantage Score: +{row['Net_Rush_Edge']}**"
+                                )
+                        else:
+                            st.info("Awaiting historical rushing efficiency samples to populate advantages board.")
+
+                    # 6. COMPLETE NATIONAL DATA SHEET MATRIX
+                    st.markdown("---")
+                    st.subheader("📋 Scheduled Games & Defensive Matchup Matrix")
+                    
+                    display_matrix = matchup_summary.rename(columns={
+                        "team": "Offense Team", "opponent": "Defensive Opponent",
+                        "Pass_Off_Rank": "Off Pass Rank", "Pass_Def_Rank": "Opp Def Pass Rank",
+                        "Net_Pass_Edge": "Net Pass Edge", "Rush_Off_Rank": "Off Rush Rank",
+                        "Rush_Def_Rank": "Opp Def Rush Rank", "Net_Rush_Edge": "Net Rush Edge"
+                    })
+                    st.dataframe(
+                        display_matrix[["Offense Team", "Off Pass Rank", "Defensive Opponent", "Opp Def Pass Rank", "Net Pass Edge", "Off Rush Rank", "Opp Def Rush Rank", "Net Rush Edge"]],
+                        use_container_width=True, hide_index=True
+                    )
+                    st.caption("💡 *Positive 'Net Edge' scores mean a highly productive offense is playing a soft defense (High OVER Probability).*")
+
+            except Exception as e:
+                st.error("⚠️ Server encountered an issue querying the 'upcoming_schedule' table.")
+                st.code(e)
+
                     
 
