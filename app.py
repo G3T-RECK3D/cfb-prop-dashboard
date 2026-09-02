@@ -89,14 +89,20 @@ try:
         df["total_offense"] = df["pass_yards"] + df["rush_yards"]
         df["total_scrimmage"] = df["rush_yards"] + df["rec_yards"]
 
-        # Structural UI Multi-tab separation
-        tab_analysis, tab_blank = st.tabs(["🎯 Single Player Analysis", "📈 Opportunity & Opponent Matchup Matrix"])
+        # Structural UI Multi-tab separation (UPDATED TO 3 TABS)
+        tab_analysis, tab_blank, tab_slate = st.tabs([
+            "🎯 Single Player Analysis", 
+            "📈 Opportunity & Opponent Matchup Matrix",
+            "📅 Pre-Game Slate Mismatch Scanner"
+        ])
 
         # Global Sidebar Filter Settings
         st.sidebar.markdown("### 🎯 Filter Settings")
         available_years = sorted(df["season"].unique(), reverse=True) if "season" in df.columns else []
         selected_year = st.sidebar.selectbox("📅 Select Season Year", available_years)
         year_df = df[df["season"] == selected_year]
+
+        ranked_players = []
 
         with tab_analysis:
             available_teams = sorted(year_df["team"].unique()) if "team" in year_df.columns else []
@@ -199,55 +205,54 @@ try:
             def_df["Pass Yds Rank"] = def_df["pass_yds_allowed"].rank(ascending=True).astype(int)
             def_df["Rush Yds Rank"] = def_df["rush_yds_allowed"].rank(ascending=True).astype(int)
 
-            # 2. Controls & Selectors
+            # Controls & Selectors
             col_ctrl1, col_ctrl2 = st.columns(2)
             with col_ctrl1:
                 selected_opp = st.selectbox("🛡️ Select Upcoming Opponent Defense", sorted(year_df["team"].unique()))
             with col_ctrl2:
-                # Reuse player selected from main sidebar or pick locally
-                opp_player = st.selectbox("👤 Target Player for Matchup", ranked_players, index=0)
+                opp_player_index = 0 if ranked_players else None
+                opp_player = st.selectbox("👤 Target Player for Matchup", ranked_players if ranked_players else ["No Data"], index=opp_player_index)
 
             st.markdown("---")
 
-            # 3. Player Usage & Volume Metrics
-            st.subheader(f"📊 Volume & Usage Profile: {opp_player}")
-            p_df = year_df[year_df["player_name"] == opp_player].sort_values("week")
-            t_name = p_df["team"].iloc[0] if not p_df.empty else selected_team
+            if opp_player != "No Data":
+                # 3. Player Usage & Volume Metrics
+                st.subheader(f"📊 Volume & Usage Profile: {opp_player}")
+                p_df = year_df[year_df["player_name"] == opp_player].sort_values("week")
+                t_name = p_df["team"].iloc[0] if not p_df.empty else selected_team
 
-            # Compute Team Totals per week to calculate true Target & Carry Share
-            team_game_totals = year_df[year_df["team"] == t_name].groupby("week").agg(
-                team_pass_att=("pass_att", "sum"),
-                team_rush_att=("rush_att", "sum")
-            ).reset_index()
+                # Compute Team Totals per week to calculate true Target & Carry Share
+                team_game_totals = year_df[year_df["team"] == t_name].groupby("week").agg(
+                    team_pass_att=("pass_att", "sum"),
+                    team_rush_att=("rush_att", "sum")
+                ).reset_index()
 
-            p_merged = pd.merge(p_df, team_game_totals, on="week", how="left")
-            p_merged["carry_share"] = (p_merged["rush_att"] / p_merged["team_rush_att"].replace(0, 1)) * 100
-            p_merged["pass_att_share"] = (p_merged["pass_att"] / p_merged["team_pass_att"].replace(0, 1)) * 100
+                p_merged = pd.merge(p_df, team_game_totals, on="week", how="left")
+                p_merged["carry_share"] = (p_merged["rush_att"] / p_merged["team_rush_att"].replace(0, 1)) * 100
+                p_merged["pass_att_share"] = (p_merged["pass_att"] / p_merged["team_pass_att"].replace(0, 1)) * 100
 
-            u1, u2, u3, u4 = st.columns(4)
-            avg_carries = p_merged["rush_att"].mean()
-            avg_carry_share = p_merged["carry_share"].mean()
-            avg_pass_att = p_merged["pass_att"].mean()
-            avg_pass_share = p_merged["pass_att_share"].mean()
+                u1, u2, u3, u4 = st.columns(4)
+                avg_carries = p_merged["rush_att"].mean()
+                avg_carry_share = p_merged["carry_share"].mean()
+                avg_pass_att = p_merged["pass_att"].mean()
+                avg_pass_share = p_merged["pass_att_share"].mean()
 
-            u1.metric("Avg Rush Att / Game", f"{avg_carries:.1f}")
-            u2.metric("Team Carry Share %", f"{avg_carry_share:.1f}%")
-            u3.metric("Avg Pass Att / Game", f"{avg_pass_att:.1f}")
-            u4.metric("Team Pass Att Share %", f"{avg_pass_share:.1f}%")
+                u1.metric("Avg Rush Att / Game", f"{avg_carries:.1f}")
+                u2.metric("Team Carry Share %", f"{avg_carry_share:.1f}%")
+                u3.metric("Avg Pass Att / Game", f"{avg_pass_att:.1f}")
+                u4.metric("Team Pass Att Share %", f"{avg_pass_share:.1f}%")
 
-            # Usage Visualization Chart
-            fig_usage = px.bar(
-                p_merged, x="opponent", y=["rush_att", "pass_att"],
-                barmode="group", title="Weekly Touches & Attempts Breakdown",
-                labels={"value": "Volume Count", "variable": "Metric", "opponent": "Opponent"}
-            )
-            fig_usage.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#f1f5f9")
-            st.plotly_chart(fig_usage, use_container_width=True)
+                # Usage Visualization Chart
+                fig_usage = px.bar(
+                    p_merged, x="opponent", y=["rush_att", "pass_att"],
+                    barmode="group", title="Weekly Touches & Attempts Breakdown",
+                    labels={"value": "Volume Count", "variable": "Metric", "opponent": "Opponent"}
+                )
+                fig_usage.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#f1f5f9")
+                st.plotly_chart(fig_usage, use_container_width=True)
 
-            st.markdown("---")
-
-            # 4. Opponent Defense Matchup Analysis
-            st.subheader(f"🛡️ Matchup Profile: {t_name} vs. {selected_opp} Defense")
+                st.markdown("---")
+                st.subheader(f"🛡️ Matchup Profile: {t_name} vs. {selected_opp} Defense")
             
             opp_stats = def_df[def_df["opponent"] == selected_opp]
             
@@ -262,10 +267,6 @@ try:
 
                 # Opponent Ranking Heatmap across all logged defenses
                 st.markdown("##### 🏆 Defensive Rank Matrix (All Logged Opponents)")
-                def_df["Pass Yds Rank"] = def_df["pass_yds_allowed"].rank(ascending=True).astype(int)
-                def_df["Rush Yds Rank"] = def_df["rush_yds_allowed"].rank(ascending=True).astype(int)
-
-                # Change the sort_values to sort by your new Rank column (1, 2, 3...)
                 st.dataframe(
                     def_df.sort_values("Pass Yds Rank", ascending=True),
                     column_config={
@@ -277,7 +278,7 @@ try:
                 )
             else:
                 st.info(f"ℹ️ No defensive game records logged for {selected_opp} yet.")
-                    
+
         # ==========================================
         # TAB 3: 📅 PRE-GAME SLATE MISMATCH SCANNER
         # ==========================================
@@ -307,7 +308,6 @@ try:
                     weekly_matchups = pd.concat([home_view, away_view], ignore_index=True)
 
                     # 3. ADVANCED PER-GAME MATHEMATICS (HISTORICAL LOGS ANALYSIS)
-                    # --- COMPUTE DEFENSIVE YARDS ALLOWED PER GAME ---
                     game_defense = year_df.groupby(["opponent", "season", "week"]).agg(
                         total_pass_yds=("pass_yards", "sum"),
                         total_rush_yds=("rush_yards", "sum")
@@ -322,7 +322,7 @@ try:
                     def_df["Pass_Def_Rank"] = def_df["pass_yds_allowed"].rank(ascending=True).astype(int)
                     def_df["Rush_Def_Rank"] = def_df["rush_yds_allowed"].rank(ascending=True).astype(int)
 
-                    # --- COMPUTE OFFENSIVE YARDS GAINED PER GAME (THE MISSING MATCHUP LINK) ---
+                    # --- COMPUTE OFFENSIVE YARDS GAINED PER GAME ---
                     game_offense = year_df.groupby(["team", "season", "week"]).agg(
                         total_pass_yds=("pass_yards", "sum"),
                         total_rush_yds=("rush_yards", "sum")
@@ -341,7 +341,6 @@ try:
                     matchup_summary = pd.merge(weekly_matchups, def_df, on="opponent", how="left")
                     matchup_summary = pd.merge(matchup_summary, off_df, on="team", how="left")
 
-                    # Handle teams with clean fill values for pristine plotting
                     fill_cols = ["pass_yds_allowed", "rush_yds_allowed", "pass_yds_gained", "rush_yds_gained"]
                     for col in fill_cols:
                         if col in matchup_summary.columns:
@@ -352,11 +351,11 @@ try:
                     matchup_summary["Pass_Off_Rank"] = matchup_summary["Pass_Off_Rank"].fillna(99).astype(int)
                     matchup_summary["Rush_Off_Rank"] = matchup_summary["Rush_Off_Rank"].fillna(99).astype(int)
 
-                    # Calculate Net Mismatch Severity (Higher Rank Difference = Massive Over Opportunity)
+                    # Calculate Net Mismatch Severity
                     matchup_summary["Net_Pass_Edge"] = matchup_summary["Pass_Def_Rank"] - matchup_summary["Pass_Off_Rank"]
                     matchup_summary["Net_Rush_Edge"] = matchup_summary["Rush_Def_Rank"] - matchup_summary["Rush_Off_Rank"]
 
-                    # 5. TOP MISMATCH CALLOUT WINDOWS (SORTED BY TRUE NET EDGE SEVERITY)
+                    # 5. TOP MISMATCH CALLOUT WINDOWS
                     st.subheader(f"🔥 Top Projected Passing & Rushing Mismatches — Week {selected_week}")
                     col1, col2 = st.columns(2)
 
@@ -401,8 +400,19 @@ try:
                         "Rush_Def_Rank": "Opp Def Rush Rank", "Net_Rush_Edge": "Net Rush Edge"
                     })
                     st.dataframe(
-                        display_matrix[["Offense Team", "Off Pass Rank", "Defensive Opponent", "Opp Def Pass Rank", "Net Pass Edge", "Off Rush Rank", "Opp Def Rush Rank", "Net Rush Edge"]],
-                        use_container_width=True, hide_index=True
+                        display_matrix[[
+                            "Offense Team", "pass_yds_gained", "Off Pass Rank", 
+                            "Defensive Opponent", "pass_yds_allowed", "Opp Def Pass Rank", "Net Pass Edge",
+                            "rush_yds_gained", "Off Rush Rank", "rush_yds_allowed", "Opp Def Rush Rank", "Net Rush Edge"
+                        ]],
+                        column_config={
+                            "pass_yds_gained": st.column_config.NumberColumn("Off Pass YPG", format="%.0f"),
+                            "pass_yds_allowed": st.column_config.NumberColumn("Def Pass YPG Allowed", format="%.0f"),
+                            "rush_yds_gained": st.column_config.NumberColumn("Off Rush YPG", format="%.0f"),
+                            "rush_yds_allowed": st.column_config.NumberColumn("Def Rush YPG Allowed", format="%.0f")
+                        },
+                        use_container_width=True, 
+                        hide_index=True
                     )
                     st.caption("💡 *Positive 'Net Edge' scores mean a highly productive offense is playing a soft defense (High OVER Probability).*")
 
@@ -410,5 +420,6 @@ try:
                 st.error("⚠️ Server encountered an issue querying the 'upcoming_schedule' table.")
                 st.code(e)
 
-                    
-
+except Exception as global_e:
+    st.error("⚠️ Failed to load database logs.")
+    st.code(global_e)
