@@ -56,18 +56,18 @@ def pct_to_american_odds(percentage):
 
 # EXPANDED PROP MARKETS TO MATCH NEW COLUMNS AND AUTO-CALCULATED TOTAL MARGINS
 PROP_MARKETS = {
-    "Passing Yards":       {"col": "pass_yards", "max": 500.0, "default": 249.5, "step": 1.0, "unit": "Yds"},
-    "Pass Completions":    {"col": "pass_cmp",   "max": 40.0,  "default": 19.5,  "step": 0.5, "unit": "Cmp"},
-    "Passing TDs":         {"col": "pass_tds",   "max": 6.0,   "default": 1.5,   "step": 0.5, "unit": "TDs"},
+    "Passing Yards":        {"col": "pass_yards", "max": 500.0, "default": 249.5, "step": 1.0, "unit": "Yds"},
+    "Pass Completions":     {"col": "pass_cmp",   "max": 40.0,  "default": 19.5,  "step": 0.5, "unit": "Cmp"},
+    "Passing TDs":          {"col": "pass_tds",   "max": 6.0,   "default": 1.5,   "step": 0.5, "unit": "TDs"},
     "Interceptions Thrown":{"col": "pass_int",   "max": 5.0,   "default": 0.5,   "step": 0.5, "unit": "Int"},
-    "Rushing Yards":       {"col": "rush_yards", "max": 250.0, "default": 79.5,  "step": 1.0, "unit": "Yds"},
-    "Rushing Attempts":    {"col": "rush_att",   "max": 35.0,  "default": 14.5,  "step": 0.5, "unit": "Att"},
-    "Rushing TDs":         {"col": "rush_tds",   "max": 4.0,   "default": 0.5,   "step": 0.5, "unit": "TDs"},
-    "Receiving Yards":     {"col": "rec_yards",  "max": 200.0, "default": 59.5,  "step": 1.0, "unit": "Yds"},
-    "Receptions":          {"col": "receptions", "max": 12.0,  "default": 4.5,   "step": 0.5, "unit": "Rec"},
-    "Receiving TDs":       {"col": "rec_tds",    "max": 4.0,   "default": 0.5,   "step": 0.5, "unit": "TDs"},
-    "Total Offense Yds":   {"col": "total_offense", "max": 600.0, "default": 299.5, "step": 1.0, "unit": "Yds"},
-    "Total Scrimmage Yds": {"col": "total_scrimmage", "max": 300.0, "default": 99.5, "step": 1.0, "unit": "Yds"}
+    "Rushing Yards":        {"col": "rush_yards", "max": 250.0, "default": 79.5,  "step": 1.0, "unit": "Yds"},
+    "Rushing Attempts":     {"col": "rush_att",   "max": 35.0,  "default": 14.5,  "step": 0.5, "unit": "Att"},
+    "Rushing TDs":          {"col": "rush_tds",   "max": 4.0,   "default": 0.5,   "step": 0.5, "unit": "TDs"},
+    "Receiving Yards":      {"col": "rec_yards",  "max": 200.0, "default": 59.5,  "step": 1.0, "unit": "Yds"},
+    "Receptions":           {"col": "receptions", "max": 12.0,  "default": 4.5,   "step": 0.5, "unit": "Rec"},
+    "Receiving TDs":        {"col": "rec_tds",    "max": 4.0,   "default": 0.5,   "step": 0.5, "unit": "TDs"},
+    "Total Offense Yds":    {"col": "total_offense", "max": 600.0, "default": 299.5, "step": 1.0, "unit": "Yds"},
+    "Total Scrimmage Yds":  {"col": "total_scrimmage", "max": 300.0, "default": 99.5, "step": 1.0, "unit": "Yds"}
 }
 
 try:
@@ -89,7 +89,7 @@ try:
         df["total_offense"] = df["pass_yards"] + df["rush_yards"]
         df["total_scrimmage"] = df["rush_yards"] + df["rec_yards"]
 
-        # Structural UI Multi-tab separation (UPDATED TO 3 TABS)
+        # Structural UI Multi-tab separation
         tab_analysis, tab_blank, tab_slate = st.tabs([
             "🎯 Single Player Analysis", 
             "📈 Opportunity & Opponent Matchup Matrix",
@@ -102,8 +102,9 @@ try:
         selected_year = st.sidebar.selectbox("📅 Select Season Year", available_years)
         year_df = df[df["season"] == selected_year]
 
-        ranked_players = []
-
+        # ==========================================
+        # TAB 1: 🎯 SINGLE PLAYER ANALYSIS
+        # ==========================================
         with tab_analysis:
             available_teams = sorted(year_df["team"].unique()) if "team" in year_df.columns else []
             selected_team = st.sidebar.selectbox("1️⃣ Select Program/Team", available_teams)
@@ -178,13 +179,16 @@ try:
                     st.subheader("📄 Filtered Database Records")
                     show_cols = [c for c in ["season", "week", "opponent", stat_col] if c in player_df.columns]
                     st.dataframe(player_df[show_cols], use_container_width=True)
-                    
+
+        # ==========================================
+        # TAB 2: 📈 OPPORTUNITY & MATCHUP MATRIX
+        # ==========================================
         with tab_blank:
             st.header("📈 Opportunity & Opponent Matchup Matrix")
             st.markdown("##### *Analyze player volume metrics and compare stats against defensive matchups.*")
             st.markdown("---")
 
-            # 1. First sum player stats per game to get total team output per game
+            # Defensive Aggregations
             game_defense = year_df.groupby(["opponent", "season", "week"]).agg(
                 total_pass_yds=("pass_yards", "sum"),
                 total_rush_yds=("rush_yards", "sum"),
@@ -192,7 +196,6 @@ try:
                 total_rush_att=("rush_att", "sum")
             ).reset_index()
 
-            # 2. Now calculate the true per-game defensive averages
             def_df = game_defense.groupby("opponent").agg(
                 games_played=("week", "count"),
                 pass_yds_allowed=("total_pass_yds", "mean"),
@@ -201,27 +204,28 @@ try:
                 rush_att_allowed=("total_rush_att", "mean")
             ).reset_index()
 
-            # 3. Add Defensive Ranks (Worst Defenses = 1st rank for Over betting opportunities)
             def_df["Pass Yds Rank"] = def_df["pass_yds_allowed"].rank(ascending=True).astype(int)
             def_df["Rush Yds Rank"] = def_df["rush_yds_allowed"].rank(ascending=True).astype(int)
 
-            # Controls & Selectors
             col_ctrl1, col_ctrl2 = st.columns(2)
+            
+            # Fetch all distinct teams and players directly for independent tab selection
+            all_teams = sorted(year_df["team"].unique()) if "team" in year_df.columns else []
+            all_players = sorted(year_df["player_name"].unique()) if "player_name" in year_df.columns else []
+
             with col_ctrl1:
-                selected_opp = st.selectbox("🛡️ Select Upcoming Opponent Defense", sorted(year_df["team"].unique()))
+                selected_opp = st.selectbox("🛡️ Select Upcoming Opponent Defense", all_teams if all_teams else ["No Data"], key="matrix_opp_sel")
             with col_ctrl2:
-                opp_player_index = 0 if ranked_players else None
-                opp_player = st.selectbox("👤 Target Player for Matchup", ranked_players if ranked_players else ["No Data"], index=opp_player_index)
+                opp_player = st.selectbox("👤 Target Player for Matchup", all_players if all_players else ["No Data"], key="matrix_player_sel")
 
             st.markdown("---")
 
             if opp_player != "No Data":
-                # 3. Player Usage & Volume Metrics
                 st.subheader(f"📊 Volume & Usage Profile: {opp_player}")
                 p_df = year_df[year_df["player_name"] == opp_player].sort_values("week")
-                t_name = p_df["team"].iloc[0] if not p_df.empty else selected_team
+                t_name = p_df["team"].iloc[0] if not p_df.empty else "Unknown"
 
-                # Compute Team Totals per week to calculate true Target & Carry Share
+                # Calculate Usage Shares
                 team_game_totals = year_df[year_df["team"] == t_name].groupby("week").agg(
                     team_pass_att=("pass_att", "sum"),
                     team_rush_att=("rush_att", "sum")
@@ -232,17 +236,11 @@ try:
                 p_merged["pass_att_share"] = (p_merged["pass_att"] / p_merged["team_pass_att"].replace(0, 1)) * 100
 
                 u1, u2, u3, u4 = st.columns(4)
-                avg_carries = p_merged["rush_att"].mean()
-                avg_carry_share = p_merged["carry_share"].mean()
-                avg_pass_att = p_merged["pass_att"].mean()
-                avg_pass_share = p_merged["pass_att_share"].mean()
+                u1.metric("Avg Rush Att / Game", f"{p_merged['rush_att'].mean():.1f}")
+                u2.metric("Team Carry Share %", f"{p_merged['carry_share'].mean():.1f}%")
+                u3.metric("Avg Pass Att / Game", f"{p_merged['pass_att'].mean():.1f}")
+                u4.metric("Team Pass Att Share %", f"{p_merged['pass_att_share'].mean():.1f}%")
 
-                u1.metric("Avg Rush Att / Game", f"{avg_carries:.1f}")
-                u2.metric("Team Carry Share %", f"{avg_carry_share:.1f}%")
-                u3.metric("Avg Pass Att / Game", f"{avg_pass_att:.1f}")
-                u4.metric("Team Pass Att Share %", f"{avg_pass_share:.1f}%")
-
-                # Usage Visualization Chart
                 fig_usage = px.bar(
                     p_merged, x="opponent", y=["rush_att", "pass_att"],
                     barmode="group", title="Weekly Touches & Attempts Breakdown",
@@ -253,19 +251,17 @@ try:
 
                 st.markdown("---")
                 st.subheader(f"🛡️ Matchup Profile: {t_name} vs. {selected_opp} Defense")
-            
+
             opp_stats = def_df[def_df["opponent"] == selected_opp]
             
             if not opp_stats.empty:
                 d_pass_yds = opp_stats["pass_yds_allowed"].values[0]
                 d_rush_yds = opp_stats["rush_yds_allowed"].values[0]
 
-                # Defensive Context Metrics
                 m1, m2 = st.columns(2)
                 m1.metric("Opponent Pass Yds Allowed / Game", f"{d_pass_yds:.1f} Yds")
                 m2.metric("Opponent Rush Yds Allowed / Game", f"{d_rush_yds:.1f} Yds")
 
-                # Opponent Ranking Heatmap across all logged defenses
                 st.markdown("##### 🏆 Defensive Rank Matrix (All Logged Opponents)")
                 st.dataframe(
                     def_df.sort_values("Pass Yds Rank", ascending=True),
@@ -288,41 +284,35 @@ try:
             st.markdown("---")
 
             try:
-                # 1. Fetch live upcoming games (increased query limit)
+                # Query schedule table with higher row limit
                 sched_resp = supabase.table("upcoming_schedule").select("*").limit(10000).execute()
                 sched_df = pd.DataFrame(sched_resp.data)
 
                 if sched_df.empty:
                     st.warning("⚠️ No upcoming games logged in your 'upcoming_schedule' table yet.")
                 else:
-                    # 2. Dynamic Season & Week Selectors
                     c_year, c_week = st.columns(2)
                     
                     with c_year:
                         sched_years = sorted(sched_df["season"].unique(), reverse=True) if "season" in sched_df.columns else [selected_year]
                         slate_year = st.selectbox("📅 Schedule Season", sched_years, key="slate_year_sel")
                     
-                    # Filter schedule down to selected season
                     season_sched = sched_df[sched_df["season"] == slate_year] if "season" in sched_df.columns else sched_df
                     
                     with c_week:
                         available_weeks = sorted(season_sched["week"].unique()) if "week" in season_sched.columns else []
                         selected_week = st.selectbox("🏈 Upcoming Slate Week", available_weeks, key="slate_week_sel") if available_weeks else 1
                     
-                    # Filter upcoming schedule rows down to selected week
                     week_sched = season_sched[season_sched["week"] == selected_week] if "week" in season_sched.columns else season_sched
 
-                    # Standardize home_team/away_team into balanced offensive perspectives
+                    # Build matchup frames
                     home_view = week_sched[["week", "home_team", "away_team"]].rename(columns={"home_team": "team", "away_team": "opponent"})
                     away_view = week_sched[["week", "away_team", "home_team"]].rename(columns={"away_team": "team", "home_team": "opponent"})
                     weekly_matchups = pd.concat([home_view, away_view], ignore_index=True)
 
-                    # 3. ADVANCED PER-GAME MATHEMATICS
-                    # Match stats to historical data (if available) or calculate cross-season stats
                     hist_df = df[df["season"] == slate_year] if ("season" in df.columns and slate_year in df["season"].unique()) else df
 
                     if not hist_df.empty:
-                        # --- COMPUTE DEFENSIVE YARDS ALLOWED PER GAME ---
                         game_defense = hist_df.groupby(["opponent", "week"]).agg(
                             total_pass_yds=("pass_yards", "sum"),
                             total_rush_yds=("rush_yards", "sum")
@@ -333,7 +323,6 @@ try:
                             rush_yds_allowed=("total_rush_yds", "mean")
                         ).reset_index()
 
-                        # --- COMPUTE OFFENSIVE YARDS GAINED PER GAME ---
                         game_offense = hist_df.groupby(["team", "week"]).agg(
                             total_pass_yds=("pass_yards", "sum"),
                             total_rush_yds=("rush_yards", "sum")
@@ -347,13 +336,11 @@ try:
                         def_df = pd.DataFrame(columns=["opponent", "pass_yds_allowed", "rush_yds_allowed"])
                         off_df = pd.DataFrame(columns=["team", "pass_yds_gained", "rush_yds_gained"])
 
-                    # Rank fallback logic
                     def_df["Pass_Def_Rank"] = def_df["pass_yds_allowed"].rank(ascending=True).fillna(99).astype(int)
                     def_df["Rush_Def_Rank"] = def_df["rush_yds_allowed"].rank(ascending=True).fillna(99).astype(int)
                     off_df["Pass_Off_Rank"] = off_df["pass_yds_gained"].rank(ascending=False).fillna(99).astype(int)
                     off_df["Rush_Off_Rank"] = off_df["rush_yds_gained"].rank(ascending=False).fillna(99).astype(int)
 
-                    # 4. MERGE DATA FIELDS INTO MASTER ADVANTAGE SHEET
                     matchup_summary = pd.merge(weekly_matchups, def_df, on="opponent", how="left")
                     matchup_summary = pd.merge(matchup_summary, off_df, on="team", how="left")
 
@@ -367,11 +354,9 @@ try:
                     matchup_summary["Pass_Off_Rank"] = matchup_summary["Pass_Off_Rank"].fillna(99).astype(int)
                     matchup_summary["Rush_Off_Rank"] = matchup_summary["Rush_Off_Rank"].fillna(99).astype(int)
 
-                    # Calculate Net Mismatch Severity
                     matchup_summary["Net_Pass_Edge"] = matchup_summary["Pass_Def_Rank"] - matchup_summary["Pass_Off_Rank"]
                     matchup_summary["Net_Rush_Edge"] = matchup_summary["Rush_Def_Rank"] - matchup_summary["Rush_Off_Rank"]
 
-                    # 5. TOP MISMATCH CALLOUT WINDOWS
                     st.subheader(f"🔥 Top Projected Passing & Rushing Mismatches — Season {slate_year} Week {selected_week}")
                     col1, col2 = st.columns(2)
 
@@ -405,7 +390,6 @@ try:
                         else:
                             st.info("No prior rushing statistics available yet for this slate's teams. Displaying scheduled games matrix below.")
 
-                    # 6. COMPLETE NATIONAL DATA SHEET MATRIX
                     st.markdown("---")
                     st.subheader("📋 Scheduled Games & Defensive Matchup Matrix")
                     
