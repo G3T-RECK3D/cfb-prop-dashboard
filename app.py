@@ -265,8 +265,9 @@ try:
                 def_df["Pass Yds Rank"] = def_df["pass_yds_allowed"].rank(ascending=False).astype(int)
                 def_df["Rush Yds Rank"] = def_df["rush_yds_allowed"].rank(ascending=False).astype(int)
 
+                # Change the sort_values to sort by your new Rank column (1, 2, 3...)
                 st.dataframe(
-                    def_df.sort_values("pass_yds_allowed", ascending=False),
+                    def_df.sort_values("Pass Yds Rank", ascending=True),
                     column_config={
                         "opponent": "Defense Program",
                         "pass_yds_allowed": st.column_config.NumberColumn("Avg Pass Yds Allowed", format="%.1f"),
