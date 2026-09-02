@@ -196,8 +196,8 @@ try:
             ).reset_index()
 
             # 3. Add Defensive Ranks (Worst Defenses = 1st rank for Over betting opportunities)
-            def_df["Pass Yds Rank"] = def_df["pass_yds_allowed"].rank(ascending=False).astype(int)
-            def_df["Rush Yds Rank"] = def_df["rush_yds_allowed"].rank(ascending=False).astype(int)
+            def_df["Pass Yds Rank"] = def_df["pass_yds_allowed"].rank(ascending=True).astype(int)
+            def_df["Rush Yds Rank"] = def_df["rush_yds_allowed"].rank(ascending=True).astype(int)
 
             # 2. Controls & Selectors
             col_ctrl1, col_ctrl2 = st.columns(2)
