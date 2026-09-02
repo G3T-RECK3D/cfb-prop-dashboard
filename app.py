@@ -178,15 +178,26 @@ try:
             st.markdown("##### *Analyze player volume metrics and compare stats against defensive matchups.*")
             st.markdown("---")
 
-            # 1. Opponent Defense Aggregation
-            # Calculates defensive metrics by grouping game logs by the opponent defense
-            def_df = year_df.groupby("opponent").agg(
-                games_played=("week", "nunique"),
-                pass_yds_allowed=("pass_yards", "mean"),
-                rush_yds_allowed=("rush_yards", "mean"),
-                pass_att_allowed=("pass_att", "mean"),
-                rush_att_allowed=("rush_att", "mean")
+            # 1. First sum player stats per game to get total team output per game
+            game_defense = year_df.groupby(["opponent", "season", "week"]).agg(
+                total_pass_yds=("pass_yards", "sum"),
+                total_rush_yds=("rush_yards", "sum"),
+                total_pass_att=("pass_att", "sum"),
+                total_rush_att=("rush_att", "sum")
             ).reset_index()
+
+            # 2. Now calculate the true per-game defensive averages
+            def_df = game_defense.groupby("opponent").agg(
+                games_played=("week", "count"),
+                pass_yds_allowed=("total_pass_yds", "mean"),
+                rush_yds_allowed=("total_rush_yds", "mean"),
+                pass_att_allowed=("total_pass_att", "mean"),
+                rush_att_allowed=("total_rush_att", "mean")
+            ).reset_index()
+
+            # 3. Add Defensive Ranks (Worst Defenses = 1st rank for Over betting opportunities)
+            def_df["Pass Yds Rank"] = def_df["pass_yds_allowed"].rank(ascending=False).astype(int)
+            def_df["Rush Yds Rank"] = def_df["rush_yds_allowed"].rank(ascending=False).astype(int)
 
             # 2. Controls & Selectors
             col_ctrl1, col_ctrl2 = st.columns(2)
