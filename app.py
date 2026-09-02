@@ -423,3 +423,7 @@ try:
             except Exception as e:
                 st.error("⚠️ Server encountered an issue querying the 'upcoming_schedule' table.")
                 st.code(e)
+
+except Exception as global_e:
+    st.error("⚠️ Failed to load database logs.")
+    st.code(global_e)
