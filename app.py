@@ -673,11 +673,24 @@ try:
         
             # Example slate mapping for the 2026 season (Replace with your database query)
             # Filter games dynamically based on selected_week
-            mock_slate_2026 = {
-                "Week 1": ["Texas vs Michigan", "Alabama vs Florida State", "Georgia vs Clemson"],
-                "Week 2": ["Ohio State vs Texas", "Oklahoma vs Tennessee", "Penn State vs Auburn"],
-                "Week 3": ["LSU vs UCLA", "Oregon vs Washington", "USC vs Notre Dame"]
-            }
+            # Fetch live slate directly from Supabase
+            try:
+                # Extract integer week number (e.g., "Week 1" -> 1)
+                week_num = int(selected_week.replace("Week ", ""))
+                
+                # Query your normalized schedule table
+                sched_res = supabase.table("normalized_upcoming_schedule")\
+                    .select("home_team, away_team")\
+                    .eq("week", week_num)\
+                    .execute()
+                
+                if sched_res.data:
+                    available_games = [f"{row['home_team']} vs {row['away_team']}" for row in sched_res.data]
+                else:
+                    available_games = ["No games scheduled for this week"]
+                    
+            except Exception as sched_err:
+                available_games = ["Error loading schedule"]
             
             # Fallback to default games if selected week isn't in your dictionary yet
             available_games = mock_slate_2026.get(selected_week, ["Alabama vs Georgia", "Ohio State vs Michigan", "Texas vs Oklahoma"])
