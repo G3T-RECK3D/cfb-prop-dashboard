@@ -58,7 +58,7 @@ PROP_MARKETS = {
     "Passing Yards":        {"col": "pass_yards", "max": 500.0, "default": 249.5, "step": 1.0, "unit": "Yds"},
     "Pass Completions":     {"col": "pass_cmp",   "max": 40.0,  "default": 19.5,  "step": 0.5, "unit": "Cmp"},
     "Passing TDs":          {"col": "pass_tds",   "max": 6.0,   "default": 1.5,   "step": 0.5, "unit": "TDs"},
-    "Interceptions Thrown":{"col": "pass_int",   "max": 5.0,   "default": 0.5,   "step": 0.5, "unit": "Int"},
+    "Interceptions Thrown": {"col": "pass_int",   "max": 5.0,   "default": 0.5,   "step": 0.5, "unit": "Int"},
     "Rushing Yards":        {"col": "rush_yards", "max": 250.0, "default": 79.5,  "step": 1.0, "unit": "Yds"},
     "Rushing Attempts":     {"col": "rush_att",   "max": 35.0,  "default": 14.5,  "step": 0.5, "unit": "Att"},
     "Rushing TDs":          {"col": "rush_tds",   "max": 4.0,   "default": 0.5,   "step": 0.5, "unit": "TDs"},
@@ -300,7 +300,6 @@ try:
                     normalized_schedule = season_sched[season_sched["week"] == selected_week] if "week" in season_sched.columns else season_sched
         
                     # --- SEASON FALLBACK LOGIC ---
-                    # If selected slate_year has no player game logs yet (e.g. 2026), fall back to the latest available historical year (e.g. 2025)
                     if "season" in df.columns and slate_year in df["season"].unique():
                         hist_df = df[df["season"] == slate_year]
                     else:
@@ -309,9 +308,8 @@ try:
                         if not hist_df.empty and "season" in hist_df.columns:
                             st.info(f"ℹ️ No 2026 game logs recorded yet. Calculating ranks using **{latest_avail_year}** historical stats.")
         
-                   # Calculate Offensive and Defensive averages per game from player logs
+                    # Calculate Offensive and Defensive averages per game from player logs
                     if not hist_df.empty:
-                        # Common CFB Team Name Abbreviations Mapping
                         name_map = {
                             "Fresno St": "Fresno State", "Fresno St.": "Fresno State",
                             "Florida St": "Florida State", "Florida St.": "Florida State",
@@ -325,12 +323,10 @@ try:
                             "Usc": "USC", "Ucla": "UCLA", "Smu": "SMU", "Ucf": "UCF", "Lsu": "LSU", "Ole Miss": "Mississippi"
                         }
         
-                        # Helper function to standardize team strings
                         def clean_team_name(series):
                             s = series.astype(str).str.strip().str.title()
                             return s.replace(name_map)
         
-                        # Standardize team strings across logs and schedule
                         hist_df["team_clean"] = clean_team_name(hist_df["team"])
                         hist_df["opp_clean"] = clean_team_name(hist_df["opponent"])
                         
@@ -384,21 +380,14 @@ try:
                     # Calculate Net Advantage Scores
                     matchup_summary["Net_Pass_Edge"] = matchup_summary["Pass_Def_Rank"] - matchup_summary["Pass_Off_Rank"]
                     matchup_summary["Net_Rush_Edge"] = matchup_summary["Rush_Def_Rank"] - matchup_summary["Rush_Off_Rank"]
-        
-                    # Clean null values for unranked teams
-                    fill_cols = ["pass_yds_allowed", "rush_yds_allowed", "pass_yds_gained", "rush_yds_gained"]
-                    for col in fill_cols:
-                        if col in matchup_summary.columns:
-                            matchup_summary[col] = matchup_summary[col].fillna(0)
-                    
-                    matchup_summary["Pass_Def_Rank"] = matchup_summary["Pass_Def_Rank"].fillna(99).astype(int)
-                    matchup_summary["Rush_Def_Rank"] = matchup_summary["Rush_Def_Rank"].fillna(99).astype(int)
-                    matchup_summary["Pass_Off_Rank"] = matchup_summary["Pass_Off_Rank"].fillna(99).astype(int)
-                    matchup_summary["Rush_Off_Rank"] = matchup_summary["Rush_Off_Rank"].fillna(99).astype(int)
-        
-                    # Calculate Net Advantage Scores (Higher Net Edge = Weak Defense vs Strong Offense)
-                    matchup_summary["Net_Pass_Edge"] = matchup_summary["Pass_Def_Rank"] - matchup_summary["Pass_Off_Rank"]
-                    matchup_summary["Net_Rush_Edge"] = matchup_summary["Rush_Def_Rank"] - matchup_summary["Rush_Off_Rank"]
+
+                    # ----------------------------------------------------
+                    # DIAGNOSTIC DEBUG EXPANDER (Inspect Unmatched Names)
+                    # ----------------------------------------------------
+                    with st.expander("🔍 Debug: View Raw Merged Schedule & Defensive Data"):
+                        st.write("Unique Opponents in Schedule:", normalized_schedule["opponent"].unique()[:10])
+                        st.write("Unique Opponents in Player Logs:", hist_df["opponent"].unique()[:10])
+                        st.dataframe(matchup_summary[["team", "opponent", "pass_yds_allowed", "Pass_Def_Rank"]])
         
                     # UI Display - Top Mismatch Cards
                     st.subheader(f"🔥 Top Projected Passing & Rushing Mismatches — Season {slate_year} Week {selected_week}")
