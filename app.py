@@ -691,9 +691,6 @@ try:
                     
             except Exception as sched_err:
                 available_games = ["Error loading schedule"]
-            
-            # Fallback to default games if selected week isn't in your dictionary yet
-            available_games = mock_slate_2026.get(selected_week, ["Alabama vs Georgia", "Ohio State vs Michigan", "Texas vs Oklahoma"])
         
             with col_game:
                 selected_game = st.selectbox(
