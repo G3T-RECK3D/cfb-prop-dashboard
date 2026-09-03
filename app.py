@@ -309,38 +309,61 @@ try:
                         if not hist_df.empty and "season" in hist_df.columns:
                             st.info(f"ℹ️ No 2026 game logs recorded yet. Calculating ranks using **{latest_avail_year}** historical stats.")
         
-                    # Calculate Offensive and Defensive averages per game from player logs
+                   # Calculate Offensive and Defensive averages per game from player logs
                     if not hist_df.empty:
-                        # 1. Calculate Offensive Production per team per game
-                        game_offense = hist_df.groupby(["team", "opponent", "week"]).agg(
+                        # Standardize string formatting across both dataframes to guarantee exact matching
+                        hist_df["team_clean"] = hist_df["team"].astype(str).str.strip().str.title()
+                        hist_df["opp_clean"] = hist_df["opponent"].astype(str).str.strip().str.title()
+                        normalized_schedule["opponent_clean"] = normalized_schedule["opponent"].astype(str).str.strip().str.title()
+                        normalized_schedule["team_clean"] = normalized_schedule["team"].astype(str).str.strip().str.title()
+        
+                        # 1. Calculate Offensive Production per game
+                        game_offense = hist_df.groupby(["team_clean", "opp_clean", "week"]).agg(
                             total_pass_yds=("pass_yards", "sum"),
                             total_rush_yds=("rush_yards", "sum")
                         ).reset_index()
         
-                        # Average offensive yards gained per game
-                        off_df = game_offense.groupby("team").agg(
+                        off_df = game_offense.groupby("team_clean").agg(
                             pass_yds_gained=("total_pass_yds", "mean"),
                             rush_yds_gained=("total_rush_yds", "mean")
                         ).reset_index()
         
-                        # 2. Defensive Yards Allowed = Offensive yards produced by their OPPONENTS against them
-                        def_df = game_offense.groupby("opponent").agg(
+                        # 2. Calculate Defensive Yards Allowed per game
+                        def_df = game_offense.groupby("opp_clean").agg(
                             pass_yds_allowed=("total_pass_yds", "mean"),
                             rush_yds_allowed=("total_rush_yds", "mean")
-                        ).reset_index()
+                        ).reset_index().rename(columns={"opp_clean": "opponent_clean"})
                     else:
-                        off_df = pd.DataFrame(columns=["team", "pass_yds_gained", "rush_yds_gained"])
-                        def_df = pd.DataFrame(columns=["opponent", "pass_yds_allowed", "rush_yds_allowed"])
+                        off_df = pd.DataFrame(columns=["team_clean", "pass_yds_gained", "rush_yds_gained"])
+                        def_df = pd.DataFrame(columns=["opponent_clean", "pass_yds_allowed", "rush_yds_allowed"])
         
-                    # Rank teams (Lower rank = fewer yards allowed for defense, higher yards gained for offense)
+                    # Rank teams
                     def_df["Pass_Def_Rank"] = def_df["pass_yds_allowed"].rank(ascending=True).fillna(99).astype(int)
                     def_df["Rush_Def_Rank"] = def_df["rush_yds_allowed"].rank(ascending=True).fillna(99).astype(int)
                     off_df["Pass_Off_Rank"] = off_df["pass_yds_gained"].rank(ascending=False).fillna(99).astype(int)
                     off_df["Rush_Off_Rank"] = off_df["rush_yds_gained"].rank(ascending=False).fillna(99).astype(int)
         
-                    # Join normalized schedule directly with defensive and offensive rankings
-                    matchup_summary = pd.merge(normalized_schedule, def_df, on="opponent", how="left")
-                    matchup_summary = pd.merge(matchup_summary, off_df, on="team", how="left")
+                    # Join normalized schedule directly with defensive and offensive rankings using cleaned team keys
+                    matchup_summary = pd.merge(normalized_schedule, def_df, on="opponent_clean", how="left")
+                    matchup_summary = pd.merge(matchup_summary, off_df, on="team_clean", how="left")
+        
+                    # Dynamic fallbacks for unranked or unmatched opponents (e.g. FCS teams with missing log data)
+                    avg_pass_def = def_df["pass_yds_allowed"].median() if not def_df.empty else 220
+                    avg_rush_def = def_df["rush_yds_allowed"].median() if not def_df.empty else 150
+        
+                    matchup_summary["pass_yds_allowed"] = matchup_summary["pass_yds_allowed"].fillna(avg_pass_def)
+                    matchup_summary["rush_yds_allowed"] = matchup_summary["rush_yds_allowed"].fillna(avg_rush_def)
+                    matchup_summary["pass_yds_gained"] = matchup_summary["pass_yds_gained"].fillna(0)
+                    matchup_summary["rush_yds_gained"] = matchup_summary["rush_yds_gained"].fillna(0)
+        
+                    matchup_summary["Pass_Def_Rank"] = matchup_summary["Pass_Def_Rank"].fillna(65).astype(int)
+                    matchup_summary["Rush_Def_Rank"] = matchup_summary["Rush_Def_Rank"].fillna(65).astype(int)
+                    matchup_summary["Pass_Off_Rank"] = matchup_summary["Pass_Off_Rank"].fillna(65).astype(int)
+                    matchup_summary["Rush_Off_Rank"] = matchup_summary["Rush_Off_Rank"].fillna(65).astype(int)
+        
+                    # Calculate Net Advantage Scores
+                    matchup_summary["Net_Pass_Edge"] = matchup_summary["Pass_Def_Rank"] - matchup_summary["Pass_Off_Rank"]
+                    matchup_summary["Net_Rush_Edge"] = matchup_summary["Rush_Def_Rank"] - matchup_summary["Rush_Off_Rank"]
         
                     # Clean null values for unranked teams
                     fill_cols = ["pass_yds_allowed", "rush_yds_allowed", "pass_yds_gained", "rush_yds_gained"]
