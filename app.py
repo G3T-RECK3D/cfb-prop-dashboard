@@ -655,7 +655,75 @@ try:
         # TAB 4: 🎲 Monte Carlo Simulation
         # ==========================================
         with tab_sim:
-            pass  # Keeps the tab completely blank for now
+            st.markdown("### 🎲 Monte Carlo Matchup & Position Simulator")
+            
+            # 1. Top Dropdown: Prop / Stat Selection
+            selected_prop = st.selectbox(
+                "🎯 Select Prop / Stat Market",
+                options=["Passing Yards", "Rushing Yards", "Receiving Yards", "Touchdowns", "Receptions"]
+            )
+            
+            # 2. Side-by-Side Dropdowns: Game & Targeted Team
+            col_game, col_team = st.columns(2)
+            
+            with col_game:
+                # Replace mock options with your active slate game list (e.g., 'Texas vs Alabama')
+                selected_game = st.selectbox(
+                    "📅 Select Game Matchup",
+                    options=["Alabama vs Georgia", "Ohio State vs Michigan", "Texas vs Oklahoma"] 
+                )
+                
+            with col_team:
+                # Dynamically split teams based on selected_game string
+                teams_in_game = [t.strip() for t in selected_game.split("vs")]
+                selected_target_team = st.selectbox(
+                    "🛡️ Select Team to Analyze",
+                    options=teams_in_game
+                )
+        
+            st.markdown("---")
+            st.markdown("##### 🏈 Select Position Filter")
+        
+            # 3. Four Position Selector Buttons
+            btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4)
+            
+            # Session state initialization to track active button selection
+            if "selected_pos" not in st.session_state:
+                st.session_state.selected_pos = "QB"
+        
+            with btn_col1:
+                if st.button("QB", use_container_width=True, type="primary" if st.session_state.selected_pos == "QB" else "secondary"):
+                    st.session_state.selected_pos = "QB"
+                    st.rerun()
+        
+            with btn_col2:
+                if st.button("RB", use_container_width=True, type="primary" if st.session_state.selected_pos == "RB" else "secondary"):
+                    st.session_state.selected_pos = "RB"
+                    st.rerun()
+        
+            with btn_col3:
+                if st.button("WR", use_container_width=True, type="primary" if st.session_state.selected_pos == "WR" else "secondary"):
+                    st.session_state.selected_pos = "WR"
+                    st.rerun()
+        
+            with btn_col4:
+                if st.button("TE", use_container_width=True, type="primary" if st.session_state.selected_pos == "TE" else "secondary"):
+                    st.session_state.selected_pos = "TE"
+                    st.rerun()
+        
+            # 4. Display Selected Context & Opposing Defense Stats Container
+            active_pos = st.session_state.selected_pos
+            
+            # Identify opponent automatically based on game selection
+            opponent_team = [t for t in teams_in_game if t != selected_target_team][0] if len(teams_in_game) == 2 else "Opponent"
+        
+            st.success(f"Viewing **{selected_target_team} ({active_pos})** vs **{opponent_team} Defense** for **{selected_prop}**")
+        
+            # Dynamic Stat Metrics Display
+            m1, m2, m3 = st.columns(3)
+            m1.metric(f"{opponent_team} {active_pos} {selected_prop} Allowed/G", "214.5 Yards", "-12.3 vs Nat'l Avg")
+            m2.metric(f"Opponent DVOA vs {active_pos}", "#22 Rank", "Top 25 Defense")
+            m3.metric(f"{active_pos} Prop Hit Rate vs Top-30 Defenses", "68.0%", "+15.2% Edge")
             
 except Exception as global_e:
     st.error("⚠️ Failed to load database logs.")
