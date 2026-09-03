@@ -19,6 +19,14 @@ st.title("🏈 College Football Player Prop Co-Pilot")
 st.markdown("##### *Advanced Historical Analysis & Fair Value Odds Engine*")
 st.markdown("---")
 
+# Mapping of FBS College Football teams to logo URLs
+FBS_LOGOS = {
+    "Alabama": "https://a.espncdn.com/i/teamlogos/ncaa/500/333.png",
+    # Add the rest of your 138 FBS team logo URLs here
+}
+
+def get_team_logo(team_name):
+    return FBS_LOGOS.get(team_name, "")
 # Secure connection setup
 SUPABASE_URL = "https://parwalgtnfgzwaibjpoz.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBhcndhbGd0bmZnendhaWJqcG96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyMDY2NDksImV4cCI6MjEwMzc4MjY0OX0.ZJmfo07gK_u4aEDPSDTipK3i1pG4Zju0HQa_bofVkDA"
@@ -127,6 +135,17 @@ try:
         with tab_analysis:
             available_teams = sorted(year_df["team"].unique()) if "team" in year_df.columns else []
             selected_team = st.sidebar.selectbox("1️⃣ Select Program/Team", available_teams)
+
+            # ==================== ADD BLOCK 2 HERE ====================
+            if selected_team:
+                col_logo, col_title = st.columns([1, 6])
+                with col_logo:
+                    logo_url = get_team_logo(selected_team)
+                    if logo_url:
+                        st.image(logo_url, width=60)
+                with col_title:
+                    st.subheader(f"{selected_team} Performance Analysis")
+            # =========================================================
             
             selected_market_name = st.sidebar.selectbox("2️⃣ Select Prop Market", list(PROP_MARKETS.keys()))
             market_info = PROP_MARKETS[selected_market_name]
