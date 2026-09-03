@@ -663,18 +663,33 @@ try:
                 options=["Passing Yards", "Rushing Yards", "Receiving Yards", "Touchdowns", "Receptions"]
             )
             
-            # 2. Side-by-Side Dropdowns: Game & Targeted Team
-            col_game, col_team = st.columns(2)
+            # 2. Three-Column Selector: Week | Game Matchup | Targeted Team
+            col_week, col_game, col_team = st.columns([1, 2, 2])
             
+            with col_week:
+                # 2026 CFB Season Week Selection
+                weeks = [f"Week {i}" for i in range(1, 16)]
+                selected_week = st.selectbox("📅 Select Week", options=weeks, index=0)
+        
+            # Example slate mapping for the 2026 season (Replace with your database query)
+            # Filter games dynamically based on selected_week
+            mock_slate_2026 = {
+                "Week 1": ["Texas vs Michigan", "Alabama vs Florida State", "Georgia vs Clemson"],
+                "Week 2": ["Ohio State vs Texas", "Oklahoma vs Tennessee", "Penn State vs Auburn"],
+                "Week 3": ["LSU vs UCLA", "Oregon vs Washington", "USC vs Notre Dame"]
+            }
+            
+            # Fallback to default games if selected week isn't in your dictionary yet
+            available_games = mock_slate_2026.get(selected_week, ["Alabama vs Georgia", "Ohio State vs Michigan", "Texas vs Oklahoma"])
+        
             with col_game:
-                # Replace mock options with your active slate game list (e.g., 'Texas vs Alabama')
                 selected_game = st.selectbox(
-                    "📅 Select Game Matchup",
-                    options=["Alabama vs Georgia", "Ohio State vs Michigan", "Texas vs Oklahoma"] 
+                    "⚔️ Select Matchup",
+                    options=available_games
                 )
                 
             with col_team:
-                # Dynamically split teams based on selected_game string
+                # Dynamically split teams based on the chosen game
                 teams_in_game = [t.strip() for t in selected_game.split("vs")]
                 selected_target_team = st.selectbox(
                     "🛡️ Select Team to Analyze",
@@ -684,10 +699,9 @@ try:
             st.markdown("---")
             st.markdown("##### 🏈 Select Position Filter")
         
-            # 3. Four Position Selector Buttons
+            # 3. Position Selector Buttons
             btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4)
             
-            # Session state initialization to track active button selection
             if "selected_pos" not in st.session_state:
                 st.session_state.selected_pos = "QB"
         
@@ -711,13 +725,11 @@ try:
                     st.session_state.selected_pos = "TE"
                     st.rerun()
         
-            # 4. Display Selected Context & Opposing Defense Stats Container
+            # 4. Display Selected Context
             active_pos = st.session_state.selected_pos
-            
-            # Identify opponent automatically based on game selection
             opponent_team = [t for t in teams_in_game if t != selected_target_team][0] if len(teams_in_game) == 2 else "Opponent"
         
-            st.success(f"Viewing **{selected_target_team} ({active_pos})** vs **{opponent_team} Defense** for **{selected_prop}**")
+            st.success(f"Viewing **2026 {selected_week}**: **{selected_target_team} ({active_pos})** vs **{opponent_team} Defense** for **{selected_prop}**")
         
             # Dynamic Stat Metrics Display
             m1, m2, m3 = st.columns(3)
