@@ -275,13 +275,14 @@ try:
             st.header("📅 Pre-Game Slate Mismatch Scanner")
             st.markdown("##### *Identify deep offensive and defensive advantages for the upcoming board.*")
             st.markdown("---")
-
+        
             try:
-                sched_resp = supabase.table("upcoming_schedule").select("*").limit(10000).execute()
+                # Fetch upcoming matchups directly from the normalized SQL View
+                sched_resp = supabase.table("normalized_upcoming_schedule").select("*").limit(10000).execute()
                 sched_df = pd.DataFrame(sched_resp.data)
-
+        
                 if sched_df.empty:
-                    st.warning("⚠️ No upcoming games logged in your 'upcoming_schedule' table yet.")
+                    st.warning("⚠️ No upcoming games logged in your 'normalized_upcoming_schedule' view yet.")
                 else:
                     c_year, c_week = st.columns(2)
                     
@@ -295,37 +296,38 @@ try:
                         available_weeks = sorted(season_sched["week"].unique()) if "week" in season_sched.columns else []
                         selected_week = st.selectbox("🏈 Upcoming Slate Week", available_weeks, key="slate_week_sel") if available_weeks else 1
                     
-                    week_sched = season_sched[season_sched["week"] == selected_week] if "week" in season_sched.columns else season_sched
-
-                    # Normalize home/away schema to team/opponent schema
-                    home_games = week_sched[['season', 'week', 'home_team', 'away_team']].rename(
-                        columns={'home_team': 'team', 'away_team': 'opponent'}
-                    )
-
-                    away_games = week_sched[['season', 'week', 'away_team', 'home_team']].rename(
-                        columns={'away_team': 'team', 'home_team': 'opponent'}
-                    )
-
-                    normalized_schedule = pd.concat([home_games, away_games], ignore_index=True)
-
-                    hist_df = df[df["season"] == slate_year] if ("season" in df.columns and slate_year in df["season"].unique()) else df
-
+                    # Filter schedule down to the selected slate week
+                    normalized_schedule = season_sched[season_sched["week"] == selected_week] if "week" in season_sched.columns else season_sched
+        
+                    # --- SEASON FALLBACK LOGIC ---
+                    # If selected slate_year has no player game logs yet (e.g. 2026), fall back to the latest available historical year (e.g. 2025)
+                    if "season" in df.columns and slate_year in df["season"].unique():
+                        hist_df = df[df["season"] == slate_year]
+                    else:
+                        latest_avail_year = df["season"].max() if ("season" in df.columns and not df.empty) else slate_year
+                        hist_df = df[df["season"] == latest_avail_year]
+                        if not hist_df.empty and "season" in hist_df.columns:
+                            st.info(f"ℹ️ No 2026 game logs recorded yet. Calculating ranks using **{latest_avail_year}** historical stats.")
+        
+                    # Calculate Offensive and Defensive averages per game from player logs
                     if not hist_df.empty:
+                        # Defensive stats allowed per game
                         game_defense = hist_df.groupby(["opponent", "week"]).agg(
                             total_pass_yds=("pass_yards", "sum"),
                             total_rush_yds=("rush_yards", "sum")
                         ).reset_index()
-
+        
                         def_df = game_defense.groupby("opponent").agg(
                             pass_yds_allowed=("total_pass_yds", "mean"),
                             rush_yds_allowed=("total_rush_yds", "mean")
                         ).reset_index()
-
+        
+                        # Offensive stats gained per game
                         game_offense = hist_df.groupby(["team", "week"]).agg(
                             total_pass_yds=("pass_yards", "sum"),
                             total_rush_yds=("rush_yards", "sum")
                         ).reset_index()
-
+        
                         off_df = game_offense.groupby("team").agg(
                             pass_yds_gained=("total_pass_yds", "mean"),
                             rush_yds_gained=("total_rush_yds", "mean")
@@ -333,15 +335,18 @@ try:
                     else:
                         def_df = pd.DataFrame(columns=["opponent", "pass_yds_allowed", "rush_yds_allowed"])
                         off_df = pd.DataFrame(columns=["team", "pass_yds_gained", "rush_yds_gained"])
-
+        
+                    # Rank teams (Lower rank = fewer yards allowed for defense, higher yards gained for offense)
                     def_df["Pass_Def_Rank"] = def_df["pass_yds_allowed"].rank(ascending=True).fillna(99).astype(int)
                     def_df["Rush_Def_Rank"] = def_df["rush_yds_allowed"].rank(ascending=True).fillna(99).astype(int)
                     off_df["Pass_Off_Rank"] = off_df["pass_yds_gained"].rank(ascending=False).fillna(99).astype(int)
                     off_df["Rush_Off_Rank"] = off_df["rush_yds_gained"].rank(ascending=False).fillna(99).astype(int)
-
+        
+                    # Join normalized schedule directly with defensive and offensive rankings
                     matchup_summary = pd.merge(normalized_schedule, def_df, on="opponent", how="left")
                     matchup_summary = pd.merge(matchup_summary, off_df, on="team", how="left")
-
+        
+                    # Clean null values for unranked teams
                     fill_cols = ["pass_yds_allowed", "rush_yds_allowed", "pass_yds_gained", "rush_yds_gained"]
                     for col in fill_cols:
                         if col in matchup_summary.columns:
@@ -351,13 +356,15 @@ try:
                     matchup_summary["Rush_Def_Rank"] = matchup_summary["Rush_Def_Rank"].fillna(99).astype(int)
                     matchup_summary["Pass_Off_Rank"] = matchup_summary["Pass_Off_Rank"].fillna(99).astype(int)
                     matchup_summary["Rush_Off_Rank"] = matchup_summary["Rush_Off_Rank"].fillna(99).astype(int)
-
+        
+                    # Calculate Net Advantage Scores (Higher Net Edge = Weak Defense vs Strong Offense)
                     matchup_summary["Net_Pass_Edge"] = matchup_summary["Pass_Def_Rank"] - matchup_summary["Pass_Off_Rank"]
                     matchup_summary["Net_Rush_Edge"] = matchup_summary["Rush_Def_Rank"] - matchup_summary["Rush_Off_Rank"]
-
+        
+                    # UI Display - Top Mismatch Cards
                     st.subheader(f"🔥 Top Projected Passing & Rushing Mismatches — Season {slate_year} Week {selected_week}")
                     col1, col2 = st.columns(2)
-
+        
                     with col1:
                         st.markdown("#### 🎯 Passing Advantages")
                         pass_mismatches = matchup_summary.sort_values(by="Net_Pass_Edge", ascending=False).head(3)
@@ -371,8 +378,8 @@ try:
                                     f"• **Net Pass Advantage Score: +{row['Net_Pass_Edge']}**"
                                 )
                         else:
-                            st.info("No prior passing statistics available yet for this slate's teams.")
-
+                            st.info("No prior passing statistics available for this slate's teams.")
+        
                     with col2:
                         st.markdown("#### 🚜 Rushing Advantages")
                         rush_mismatches = matchup_summary.sort_values(by="Net_Rush_Edge", ascending=False).head(3)
@@ -386,8 +393,9 @@ try:
                                     f"• **Net Rush Advantage Score: +{row['Net_Rush_Edge']}**"
                                 )
                         else:
-                            st.info("No prior rushing statistics available yet for this slate's teams.")
-
+                            st.info("No prior rushing statistics available for this slate's teams.")
+        
+                    # UI Display - Full Matrix Table
                     st.markdown("---")
                     st.subheader("📋 Scheduled Games & Defensive Matchup Matrix")
                     
@@ -401,9 +409,9 @@ try:
                     show_cols = ["Offense Team", "Off Pass Rank", "Defensive Opponent", "Opp Def Pass Rank", "Net Pass Edge", "Off Rush Rank", "Opp Def Rush Rank", "Net Rush Edge"]
                     valid_cols = [c for c in show_cols if c in display_matrix.columns]
                     st.dataframe(display_matrix[valid_cols], use_container_width=True, hide_index=True)
-
+        
             except Exception as e:
-                st.error("⚠️ Server encountered an issue querying the 'upcoming_schedule' table.")
+                st.error("⚠️ An unexpected issue occurred while rendering the slate scanner.")
                 st.code(e)
 
 except Exception as global_e:
