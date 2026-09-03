@@ -70,7 +70,7 @@ PROP_MARKETS = {
 }
 
 try:
-    response = supabase.table("player_game_logs").select("*").execute()
+    response = supabase.table("player_game_logs").select("*").limit(100000).execute()
     df = pd.DataFrame(response.data)
 
     if df.empty:
