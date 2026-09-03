@@ -400,14 +400,9 @@ try:
                     matchup_summary["Net_Pass_Edge"] = matchup_summary["Pass_Def_Rank"] - matchup_summary["Pass_Off_Rank"]
                     matchup_summary["Net_Rush_Edge"] = matchup_summary["Rush_Def_Rank"] - matchup_summary["Rush_Off_Rank"]
         
-                    with st.expander("🔍 Debug: View Raw Merged Schedule & Defensive Data"):
-                                st.write("Unique Opponents in Schedule:", normalized_schedule["opponent"].unique()[:10])
-                                st.write("Unique Opponents in Player Logs:", hist_df["opponent"].unique()[:10])
-                                st.dataframe(matchup_summary[["team", "opponent", "pass_yds_allowed", "Pass_Def_Rank"]])
-                                        
-                                        # UI Display - Top Mismatch Cards
-                                        st.subheader(f"🔥 Top Projected Passing & Rushing Mismatches — Season {slate_year} Week {selected_week}")
-                                        col1, col2 = st.columns(2)
+                    # UI Display - Top Mismatch Cards
+                    st.subheader(f"🔥 Top Projected Passing & Rushing Mismatches — Season {slate_year} Week {selected_week}")
+                    col1, col2 = st.columns(2)
         
                     with col1:
                         st.markdown("#### 🎯 Passing Advantages")
