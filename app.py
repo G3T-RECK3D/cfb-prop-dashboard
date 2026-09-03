@@ -312,12 +312,12 @@ try:
                     # Calculate Offensive and Defensive averages per game from player logs
                     if not hist_df.empty:
                         # Defensive stats allowed per game
-                        game_defense = hist_df.groupby(["opponent", "week"]).agg(
+                        game_defense = hist_df.groupby(["team", "week"]).agg(
                             total_pass_yds=("pass_yards", "sum"),
                             total_rush_yds=("rush_yards", "sum")
                         ).reset_index()
         
-                        def_df = game_defense.groupby("opponent").agg(
+                        def_df = game_defense.groupby("team").agg(
                             pass_yds_allowed=("total_pass_yds", "mean"),
                             rush_yds_allowed=("total_rush_yds", "mean")
                         ).reset_index()
