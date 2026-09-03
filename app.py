@@ -313,13 +313,33 @@ try:
         
                    # Calculate Offensive and Defensive averages per game from player logs
                     if not hist_df.empty:
-                        # Standardize string formatting across both dataframes to guarantee exact matching
-                        hist_df["team_clean"] = hist_df["team"].astype(str).str.strip().str.title()
-                        hist_df["opp_clean"] = hist_df["opponent"].astype(str).str.strip().str.title()
-                        normalized_schedule["opponent_clean"] = normalized_schedule["opponent"].astype(str).str.strip().str.title()
-                        normalized_schedule["team_clean"] = normalized_schedule["team"].astype(str).str.strip().str.title()
+                        # Common CFB Team Name Abbreviations Mapping
+                        name_map = {
+                            "Fresno St": "Fresno State", "Fresno St.": "Fresno State",
+                            "Florida St": "Florida State", "Florida St.": "Florida State",
+                            "Ohio St": "Ohio State", "Ohio St.": "Ohio State",
+                            "Penn St": "Penn State", "Penn St.": "Penn State",
+                            "Mich St": "Michigan State", "Mich St.": "Michigan State",
+                            "App St": "Appalachian State", "App St.": "Appalachian State",
+                            "San Jose St": "San Jose State", "San Jose St.": "San Jose State",
+                            "Boise St": "Boise State", "Boise St.": "Boise State",
+                            "N.C. State": "NC State", "North Carolina St": "NC State",
+                            "Usc": "USC", "Ucla": "UCLA", "Smu": "SMU", "Ucf": "UCF", "Lsu": "LSU", "Ole Miss": "Mississippi"
+                        }
         
-                        # 1. Calculate Offensive Production per game
+                        # Helper function to standardize team strings
+                        def clean_team_name(series):
+                            s = series.astype(str).str.strip().str.title()
+                            return s.replace(name_map)
+        
+                        # Standardize team strings across logs and schedule
+                        hist_df["team_clean"] = clean_team_name(hist_df["team"])
+                        hist_df["opp_clean"] = clean_team_name(hist_df["opponent"])
+                        
+                        normalized_schedule["team_clean"] = clean_team_name(normalized_schedule["team"])
+                        normalized_schedule["opponent_clean"] = clean_team_name(normalized_schedule["opponent"])
+        
+                        # 1. Offensive Production per game
                         game_offense = hist_df.groupby(["team_clean", "opp_clean", "week"]).agg(
                             total_pass_yds=("pass_yards", "sum"),
                             total_rush_yds=("rush_yards", "sum")
@@ -330,7 +350,7 @@ try:
                             rush_yds_gained=("total_rush_yds", "mean")
                         ).reset_index()
         
-                        # 2. Calculate Defensive Yards Allowed per game
+                        # 2. Defensive Yards Surrendered per game
                         def_df = game_offense.groupby("opp_clean").agg(
                             pass_yds_allowed=("total_pass_yds", "mean"),
                             rush_yds_allowed=("total_rush_yds", "mean")
@@ -345,11 +365,11 @@ try:
                     off_df["Pass_Off_Rank"] = off_df["pass_yds_gained"].rank(ascending=False).fillna(99).astype(int)
                     off_df["Rush_Off_Rank"] = off_df["rush_yds_gained"].rank(ascending=False).fillna(99).astype(int)
         
-                    # Join normalized schedule directly with defensive and offensive rankings using cleaned team keys
+                    # Join schedule with team rankings
                     matchup_summary = pd.merge(normalized_schedule, def_df, on="opponent_clean", how="left")
                     matchup_summary = pd.merge(matchup_summary, off_df, on="team_clean", how="left")
         
-                    # Dynamic fallbacks for unranked or unmatched opponents (e.g. FCS teams with missing log data)
+                    # Fallbacks for FCS/Unmatched teams using median values
                     avg_pass_def = def_df["pass_yds_allowed"].median() if not def_df.empty else 220
                     avg_rush_def = def_df["rush_yds_allowed"].median() if not def_df.empty else 150
         
