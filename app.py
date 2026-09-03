@@ -247,10 +247,11 @@ try:
         df["total_offense"] = df["pass_yards"] + df["rush_yards"]
         df["total_scrimmage"] = df["rush_yards"] + df["rec_yards"]
 
-        tab_analysis, tab_blank, tab_slate = st.tabs([
+        tab_analysis, tab_blank, tab_slate, tab_sim = st.tabs([
             "🎯 Single Player Analysis", 
             "📈 Opportunity & Opponent Matchup Matrix",
-            "📅 Pre-Game Slate Mismatch Scanner"
+            "📅 Pre-Game Slate Mismatch Scanner",
+            "🎲 Monte Carlo Simulation CFB" 
         ])
 
         # Global Sidebar Filter Settings
@@ -646,7 +647,12 @@ try:
                     show_cols = ["Offense Team", "Off Pass Rank", "Defensive Opponent", "Opp Def Pass Rank", "Net Pass Edge", "Off Rush Rank", "Opp Def Rush Rank", "Net Rush Edge"]
                     valid_cols = [c for c in show_cols if c in display_matrix.columns]
                     st.dataframe(display_matrix[valid_cols], use_container_width=True, hide_index=True)
-        
+        # ==========================================
+        # TAB 4: 🎲 Monte Carlo Simulation
+        # ==========================================
+        with tab_sim:
+            pass  # Keeps the tab completely blank for now
+            
             except Exception as e:
                 st.error("⚠️ An unexpected issue occurred while rendering the slate scanner.")
                 st.code(e)
