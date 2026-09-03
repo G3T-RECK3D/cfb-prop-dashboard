@@ -675,21 +675,29 @@ try:
             # Filter games dynamically based on selected_week
             # Fetch live slate directly from Supabase
             try:
-                # Extract integer week number (e.g., "Week 1" -> 1)
+                # Convert "Week 1" -> 1
                 week_num = int(selected_week.replace("Week ", ""))
                 
-                # Query your normalized schedule table
+                # Query schedule table for integer week
                 sched_res = supabase.table("normalized_upcoming_schedule")\
-                    .select("home_team, away_team")\
+                    .select("*")\
                     .eq("week", week_num)\
                     .execute()
                 
                 if sched_res.data:
-                    available_games = [f"{row['home_team']} vs {row['away_team']}" for row in sched_res.data]
+                    games = []
+                    for row in sched_res.data:
+                        # Detect team column names dynamically
+                        home = row.get("home_team") or row.get("home") or row.get("team") or "Home"
+                        away = row.get("away_team") or row.get("away") or row.get("opponent") or "Away"
+                        games.append(f"{home} vs {away}")
+                    
+                    available_games = games
                 else:
-                    available_games = ["No games scheduled for this week"]
+                    available_games = [f"No games scheduled for Week {week_num}"]
                     
             except Exception as sched_err:
+                st.error(f"Schedule Query Error: {sched_err}")
                 available_games = ["Error loading schedule"]
         
             with col_game:
