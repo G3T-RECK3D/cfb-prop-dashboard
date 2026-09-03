@@ -311,30 +311,26 @@ try:
         
                     # Calculate Offensive and Defensive averages per game from player logs
                     if not hist_df.empty:
-                        # Defensive stats allowed per game
-                        game_defense = hist_df.groupby(["team", "week"]).agg(
+                        # 1. Calculate Offensive Production per team per game
+                        game_offense = hist_df.groupby(["team", "opponent", "week"]).agg(
                             total_pass_yds=("pass_yards", "sum"),
                             total_rush_yds=("rush_yards", "sum")
                         ).reset_index()
         
-                        def_df = game_defense.groupby("team").agg(
-                            pass_yds_allowed=("total_pass_yds", "mean"),
-                            rush_yds_allowed=("total_rush_yds", "mean")
-                        ).reset_index()
-        
-                        # Offensive stats gained per game
-                        game_offense = hist_df.groupby(["team", "week"]).agg(
-                            total_pass_yds=("pass_yards", "sum"),
-                            total_rush_yds=("rush_yards", "sum")
-                        ).reset_index()
-        
+                        # Average offensive yards gained per game
                         off_df = game_offense.groupby("team").agg(
                             pass_yds_gained=("total_pass_yds", "mean"),
                             rush_yds_gained=("total_rush_yds", "mean")
                         ).reset_index()
+        
+                        # 2. Defensive Yards Allowed = Offensive yards produced by their OPPONENTS against them
+                        def_df = game_offense.groupby("opponent").agg(
+                            pass_yds_allowed=("total_pass_yds", "mean"),
+                            rush_yds_allowed=("total_rush_yds", "mean")
+                        ).reset_index()
                     else:
-                        def_df = pd.DataFrame(columns=["opponent", "pass_yds_allowed", "rush_yds_allowed"])
                         off_df = pd.DataFrame(columns=["team", "pass_yds_gained", "rush_yds_gained"])
+                        def_df = pd.DataFrame(columns=["opponent", "pass_yds_allowed", "rush_yds_allowed"])
         
                     # Rank teams (Lower rank = fewer yards allowed for defense, higher yards gained for offense)
                     def_df["Pass_Def_Rank"] = def_df["pass_yds_allowed"].rank(ascending=True).fillna(99).astype(int)
