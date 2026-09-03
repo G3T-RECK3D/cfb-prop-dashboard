@@ -102,6 +102,15 @@ try:
         # TAB 1: 🎯 SINGLE PLAYER ANALYSIS
         # ==========================================
         with tab_analysis:
+            # --- TEMPORARY DEBUG BOX ---
+            with st.expander("🔍 Debug: See Where Teams Are Pulled From"):
+                st.write(f"**Total rows fetched from Supabase (`df`):** {len(df)}")
+                st.write(f"**Selected Season:** {selected_year}")
+                st.write(f"**Rows matching season {selected_year} (`year_df`):** {len(year_df)}")
+                st.write("**All unique values found in `year_df['team']`:**")
+                st.write(year_df["team"].unique().tolist() if "team" in year_df.columns else "No 'team' column found!")
+
+        with tab_analysis:
             available_teams = sorted(year_df["team"].unique()) if "team" in year_df.columns else []
             selected_team = st.sidebar.selectbox("1️⃣ Select Program/Team", available_teams)
             
