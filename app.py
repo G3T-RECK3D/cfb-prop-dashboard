@@ -210,7 +210,7 @@ PROP_MARKETS = {
 try:
     def fetch_all_player_game_logs():
         all_rows = []
-        page_size = 10000
+        page_size = 1000
         start = 0
 
         while True:
@@ -232,7 +232,21 @@ try:
 
         return pd.DataFrame(all_rows)
 
+    def fetch_fbs_teams():
+        try:
+            response = (
+                supabase.table("fbs_teams")
+                .select("team")
+                .eq("division", "FBS")
+                .execute()
+            )
+            return [row["team"] for row in (response.data or []) if row.get("team")]
+        except Exception:
+            st.warning("Unable to read fbs_teams; using the configured FBS team fallback.")
+            return []
+
     df = fetch_all_player_game_logs()
+    fbs_teams = fetch_fbs_teams()
 
     if df.empty:
         st.warning("🔄 Table layout established on live server. Awaiting records...")
@@ -751,9 +765,131 @@ try:
         
             # Dynamic Stat Metrics Display
             m1, m2, m3 = st.columns(3)
-            m1.metric(f"{opponent_team} {active_pos} {selected_prop} Allowed/G", "214.5 Yards", "-12.3 vs Nat'l Avg")
-            m2.metric(f"Opponent DVOA vs {active_pos}", "#22 Rank", "Top 25 Defense")
-            m3.metric(f"{active_pos} Prop Hit Rate vs Top-30 Defenses", "68.0%", "+15.2% Edge")
+            prop_columns = {
+                "Passing Yards": ("pass_yards", "Yards"),
+                "Rushing Yards": ("rush_yards", "Yards"),
+                "Receiving Yards": ("rec_yards", "Yards"),
+                "Touchdowns": ("total_touchdowns", "TDs"),
+                "Receptions": ("receptions", "Receptions")
+            }
+            prop_column, prop_unit = prop_columns[selected_prop]
+
+            simulation_df = df.copy()
+            simulation_name_map = {
+                "app state": "appalachian state", "app st": "appalachian state",
+                "florida st": "florida state", "ohio st": "ohio state",
+                "penn st": "penn state", "mich st": "michigan state",
+                "san jose st": "san jose state", "san josé state": "san jose state",
+                "boise st": "boise state", "fresno st": "fresno state",
+                "n.c state": "nc state", "north carolina st": "nc state"
+            }
+
+            def canonical_team_name(value):
+                normalized = str(value).strip().casefold().replace(".", "")
+                return simulation_name_map.get(normalized, normalized)
+
+            simulation_df["team_name"] = simulation_df["team"].map(canonical_team_name)
+            simulation_df["opponent_name"] = simulation_df["opponent"].map(canonical_team_name)
+            opponent_name = canonical_team_name(opponent_team)
+            target_name = canonical_team_name(selected_target_team)
+            fbs_team_names = {canonical_team_name(team_name) for team_name in fbs_teams}
+            if not fbs_team_names:
+                fbs_team_names = {canonical_team_name(team_name) for team_name in TEAM_BRANDING}
+
+            opponent_history = simulation_df[simulation_df["opponent_name"] == opponent_name]
+            if not opponent_history.empty and (opponent_history["season"] == 2026).any():
+                simulation_season = 2026
+            elif not opponent_history.empty:
+                simulation_season = opponent_history["season"].max()
+            else:
+                simulation_season = None
+
+            if simulation_season is not None:
+                simulation_df = simulation_df[simulation_df["season"] == simulation_season]
+                if selected_prop == "Touchdowns":
+                    simulation_df[prop_column] = (
+                        simulation_df["pass_tds"]
+                        + simulation_df["rush_tds"]
+                        + simulation_df["rec_tds"]
+                    )
+                position_simulation_df = simulation_df[
+                    simulation_df["opponent_name"].isin(fbs_team_names)
+                ]
+                position_df = position_simulation_df[
+                    position_simulation_df["position"].astype(str).str.upper() == active_pos
+                ]
+                all_game_keys = position_simulation_df[["opponent_name", "week"]].drop_duplicates()
+                position_game_totals = position_df.groupby(
+                    ["opponent_name", "week"]
+                )[prop_column].sum().reset_index()
+                game_totals = all_game_keys.merge(
+                    position_game_totals, on=["opponent_name", "week"], how="left"
+                )
+                game_totals[prop_column] = game_totals[prop_column].fillna(0)
+                opponent_games = game_totals[game_totals["opponent_name"] == opponent_name]
+                allowed_avg = opponent_games[prop_column].mean() if not opponent_games.empty else None
+                national_avg = game_totals.groupby("opponent_name")[prop_column].mean().mean() if not game_totals.empty else None
+
+                position_defense_games = position_df.groupby(["opponent_name", "week"]).agg(
+                    pass_yards_allowed=("pass_yards", "sum"),
+                    rush_yards_allowed=("rush_yards", "sum")
+                ).reset_index()
+                defense_games = all_game_keys.merge(
+                    position_defense_games, on=["opponent_name", "week"], how="left"
+                ).fillna(0)
+                defense_averages = defense_games.groupby("opponent_name").agg(
+                    pass_yards_allowed=("pass_yards_allowed", "mean"),
+                    rush_yards_allowed=("rush_yards_allowed", "mean")
+                ).reset_index()
+                defense_column = "rush_yards_allowed" if active_pos == "RB" else "pass_yards_allowed"
+                defense_averages["defense_rank"] = defense_averages[defense_column].rank(
+                    ascending=True, method="min"
+                ).astype(int)
+                opponent_rank_row = defense_averages[
+                    defense_averages["opponent_name"] == opponent_name
+                ]
+                opponent_rank = int(opponent_rank_row["defense_rank"].iloc[0]) if not opponent_rank_row.empty else None
+
+                top_30_defenses = set(
+                    defense_averages.nsmallest(30, defense_column)["opponent_name"]
+                )
+                prop_lines = {
+                    "Passing Yards": 249.5, "Rushing Yards": 79.5,
+                    "Receiving Yards": 59.5, "Touchdowns": 0.5, "Receptions": 4.5
+                }
+                target_logs = position_simulation_df[
+                    (position_simulation_df["team_name"] == target_name)
+                    & (position_simulation_df["position"].astype(str).str.upper() == active_pos)
+                    & (position_simulation_df["opponent_name"].isin(top_30_defenses))
+                ].copy()
+                if selected_prop == "Touchdowns":
+                    target_logs[prop_column] = (
+                        target_logs["pass_tds"]
+                        + target_logs["rush_tds"]
+                        + target_logs["rec_tds"]
+                    )
+                hit_rate = (
+                    (target_logs[prop_column] > prop_lines[selected_prop]).mean() * 100
+                    if not target_logs.empty else None
+                )
+            else:
+                allowed_avg = None
+                national_avg = None
+                opponent_rank = None
+                hit_rate = None
+
+            allowed_value = f"{allowed_avg:.1f} {prop_unit}" if allowed_avg is not None else "No data"
+            allowed_delta = (
+                f"{allowed_avg - national_avg:+.1f} vs Nat'l Avg"
+                if allowed_avg is not None and national_avg is not None else None
+            )
+            m1.metric(f"{opponent_team} {active_pos} {selected_prop} Allowed/G", allowed_value, allowed_delta)
+            rank_universe = 138 if simulation_season == 2026 else 136
+            dvoa_value = f"#{opponent_rank} of {rank_universe}" if opponent_rank is not None else "No data"
+            dvoa_delta = "Top 30 Defense" if opponent_rank is not None and opponent_rank <= 30 else None
+            m2.metric(f"Opponent DVOA vs {active_pos}", dvoa_value, dvoa_delta)
+            hit_rate_value = f"{hit_rate:.1f}%" if hit_rate is not None else "No data"
+            m3.metric(f"{active_pos} Prop Hit Rate vs Top-30 Defenses", hit_rate_value)
             
 except Exception as global_e:
     st.error("⚠️ Failed to load database logs.")
