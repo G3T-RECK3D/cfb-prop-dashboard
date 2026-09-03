@@ -76,6 +76,27 @@ try:
     if df.empty:
         st.warning("🔄 Table layout established on live server. Awaiting records...")
     else:
+        # --- CLEAN JSON BRACKETS AND STRIP EXTRA SPACES ---
+        def clean_opponent(val):
+            if isinstance(val, str):
+                val_strip = val.strip()
+                if val_strip.startswith("[") and val_strip.endswith("]"):
+                    try:
+                        parsed = json.loads(val_strip)
+                        if isinstance(parsed, list) and len(parsed) > 0:
+                            return str(parsed[0]).strip()
+                    except Exception:
+                        pass
+                return val_strip.replace("[", "").replace("]", "").replace('"', "").replace("'", "").strip()
+            return val
+
+        if "opponent" in df.columns:
+            df["opponent"] = df["opponent"].apply(clean_opponent)
+
+        if "team" in df.columns:
+            df["team"] = df["team"].astype(str).str.strip()
+        # ---------------------------------------------------
+
         raw_cols = ["pass_yards", "pass_cmp", "pass_att", "pass_tds", "pass_int", "rush_att", "rush_yards", "rush_tds", "rec_yards", "receptions", "rec_tds"]
         for c in raw_cols:
             if c in df.columns:
