@@ -299,7 +299,14 @@ try:
                     prop_line = st.sidebar.slider("Sportsbook Line Mark", min_value=0.0, max_value=market_info["max"], value=market_info["default"], step=market_info["step"])
 
                     brand = TEAM_BRANDING.get(selected_team, DEFAULT_BRAND)
-                    st.subheader(f"{brand['emoji']} {selected_player.upper()}")
+                    brand_color = brand.get("primary", "#1e293b")
+                    logo_url = brand.get("logo", DEFAULT_BRAND["logo"])
+                    
+                    col_logo, col_title = st.columns([1, 8])
+                    with col_logo:
+                        st.image(logo_url, width=45)
+                    with col_title:
+                        st.markdown(f"<h3 style='color: {brand_color}; margin:0;'>{selected_player.upper()}</h3>", unsafe_allow_html=True)
                     st.markdown(f"*{selected_team} | Season {selected_year} Analytics Dataset*")
 
                     player_df = year_df[year_df["player_name"] == selected_player].sort_values(by="week")
