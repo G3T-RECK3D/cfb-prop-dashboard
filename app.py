@@ -272,11 +272,6 @@ try:
         # TAB 3: 📅 PRE-GAME SLATE MISMATCH SCANNER
         # ==========================================
         with tab_slate:
-          # DIAGNOSTIC CHECK: Place right above 'st.subheader("🔥 Top Projected...")'
-        with st.expander("🔍 Debug: View Raw Merged Schedule & Defensive Data"):
-            st.write("Unique Opponents in Schedule:", normalized_schedule["opponent"].unique()[:10])
-            st.write("Unique Opponents in Player Logs:", hist_df["opponent"].unique()[:10])
-            st.dataframe(matchup_summary[["team", "opponent", "pass_yds_allowed", "Pass_Def_Rank"]])
             st.header("📅 Pre-Game Slate Mismatch Scanner")
             st.markdown("##### *Identify deep offensive and defensive advantages for the upcoming board.*")
             st.markdown("---")
