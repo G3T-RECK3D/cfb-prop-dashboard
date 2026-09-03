@@ -58,7 +58,7 @@ PROP_MARKETS = {
     "Passing Yards":        {"col": "pass_yards", "max": 500.0, "default": 249.5, "step": 1.0, "unit": "Yds"},
     "Pass Completions":     {"col": "pass_cmp",   "max": 40.0,  "default": 19.5,  "step": 0.5, "unit": "Cmp"},
     "Passing TDs":          {"col": "pass_tds",   "max": 6.0,   "default": 1.5,   "step": 0.5, "unit": "TDs"},
-    "Interceptions Thrown": {"col": "pass_int",   "max": 5.0,   "default": 0.5,   "step": 0.5, "unit": "Int"},
+    "Interceptions Thrown":{"col": "pass_int",   "max": 5.0,   "default": 0.5,   "step": 0.5, "unit": "Int"},
     "Rushing Yards":        {"col": "rush_yards", "max": 250.0, "default": 79.5,  "step": 1.0, "unit": "Yds"},
     "Rushing Attempts":     {"col": "rush_att",   "max": 35.0,  "default": 14.5,  "step": 0.5, "unit": "Att"},
     "Rushing TDs":          {"col": "rush_tds",   "max": 4.0,   "default": 0.5,   "step": 0.5, "unit": "TDs"},
@@ -70,33 +70,35 @@ PROP_MARKETS = {
 }
 
 try:
-    response = supabase.table("player_game_logs").select("*").limit(100000).execute()
-    df = pd.DataFrame(response.data)
+    def fetch_all_player_game_logs():
+        all_rows = []
+        page_size = 10000
+        start = 0
+
+        while True:
+            response = (
+                supabase.table("player_game_logs")
+                .select("*")
+                .range(start, start + page_size - 1)
+                .execute()
+            )
+            rows = response.data or []
+            if not rows:
+                break
+
+            all_rows.extend(rows)
+            if len(rows) < page_size:
+                break
+
+            start += page_size
+
+        return pd.DataFrame(all_rows)
+
+    df = fetch_all_player_game_logs()
 
     if df.empty:
         st.warning("🔄 Table layout established on live server. Awaiting records...")
     else:
-        # --- CLEAN JSON BRACKETS AND STRIP EXTRA SPACES ---
-        def clean_opponent(val):
-            if isinstance(val, str):
-                val_strip = val.strip()
-                if val_strip.startswith("[") and val_strip.endswith("]"):
-                    try:
-                        parsed = json.loads(val_strip)
-                        if isinstance(parsed, list) and len(parsed) > 0:
-                            return str(parsed[0]).strip()
-                    except Exception:
-                        pass
-                return val_strip.replace("[", "").replace("]", "").replace('"', "").replace("'", "").strip()
-            return val
-
-        if "opponent" in df.columns:
-            df["opponent"] = df["opponent"].apply(clean_opponent)
-
-        if "team" in df.columns:
-            df["team"] = df["team"].astype(str).str.strip()
-        # ---------------------------------------------------
-
         raw_cols = ["pass_yards", "pass_cmp", "pass_att", "pass_tds", "pass_int", "rush_att", "rush_yards", "rush_tds", "rec_yards", "receptions", "rec_tds"]
         for c in raw_cols:
             if c in df.columns:
@@ -122,15 +124,6 @@ try:
         # ==========================================
         # TAB 1: 🎯 SINGLE PLAYER ANALYSIS
         # ==========================================
-        with tab_analysis:
-            # --- TEMPORARY DEBUG BOX ---
-            with st.expander("🔍 Debug: See Where Teams Are Pulled From"):
-                st.write(f"**Total rows fetched from Supabase (`df`):** {len(df)}")
-                st.write(f"**Selected Season:** {selected_year}")
-                st.write(f"**Rows matching season {selected_year} (`year_df`):** {len(year_df)}")
-                st.write("**All unique values found in `year_df['team']`:**")
-                st.write(year_df["team"].unique().tolist() if "team" in year_df.columns else "No 'team' column found!")
-
         with tab_analysis:
             available_teams = sorted(year_df["team"].unique()) if "team" in year_df.columns else []
             selected_team = st.sidebar.selectbox("1️⃣ Select Program/Team", available_teams)
@@ -328,40 +321,63 @@ try:
                     
                     # Filter schedule down to the selected slate week
                     normalized_schedule = season_sched[season_sched["week"] == selected_week] if "week" in season_sched.columns else season_sched
+
+                    # Common CFB Team Name Abbreviations Mapping
+                    name_map = {
+                        "Fresno St": "Fresno State", "Fresno St.": "Fresno State",
+                        "Florida St": "Florida State", "Florida St.": "Florida State",
+                        "Ohio St": "Ohio State", "Ohio St.": "Ohio State",
+                        "Penn St": "Penn State", "Penn St.": "Penn State",
+                        "Mich St": "Michigan State", "Mich St.": "Michigan State",
+                        "App St": "Appalachian State", "App St.": "Appalachian State",
+                        "San Jose St": "San Jose State", "San Jose St.": "San Jose State",
+                        "Boise St": "Boise State", "Boise St.": "Boise State",
+                        "N.C. State": "NC State", "North Carolina St": "NC State",
+                        "Usc": "USC", "Ucla": "UCLA", "Smu": "SMU", "Ucf": "UCF", "Lsu": "LSU", "Ole Miss": "Mississippi"
+                    }
+
+                    def clean_team_name(series):
+                        s = series.astype(str).str.strip().str.title()
+                        return s.replace(name_map)
+
+                    # Standardize team strings before selecting historical fallbacks.
+                    normalized_schedule["team_clean"] = clean_team_name(normalized_schedule["team"])
+                    normalized_schedule["opponent_clean"] = clean_team_name(normalized_schedule["opponent"])
         
                     # --- SEASON FALLBACK LOGIC ---
-                    if "season" in df.columns and slate_year in df["season"].unique():
-                        hist_df = df[df["season"] == slate_year]
-                    else:
-                        latest_avail_year = df["season"].max() if ("season" in df.columns and not df.empty) else slate_year
-                        hist_df = df[df["season"] == latest_avail_year]
-                        if not hist_df.empty and "season" in hist_df.columns:
-                            st.info(f"ℹ️ No 2026 game logs recorded yet. Calculating ranks using **{latest_avail_year}** historical stats.")
+                    # Use the selected season where available, then fall back per scheduled team.
+                    current_hist_df = df[df["season"] == slate_year].copy() if "season" in df.columns else pd.DataFrame()
+                    historical_frames = [current_hist_df]
+                    fallback_years = {}
+                    scheduled_teams = set(normalized_schedule["team_clean"]).union(normalized_schedule["opponent_clean"])
+
+                    for scheduled_team in scheduled_teams:
+                        has_current_data = (
+                            clean_team_name(current_hist_df["team"]).eq(scheduled_team).any()
+                            or clean_team_name(current_hist_df["opponent"]).eq(scheduled_team).any()
+                        ) if not current_hist_df.empty else False
+                        if has_current_data:
+                            continue
+
+                        team_history = df[
+                            clean_team_name(df["team"]).eq(scheduled_team)
+                            | clean_team_name(df["opponent"]).eq(scheduled_team)
+                        ] if "season" in df.columns else pd.DataFrame()
+                        if not team_history.empty:
+                            fallback_year = team_history["season"].max()
+                            historical_frames.append(team_history[team_history["season"] == fallback_year])
+                            fallback_years[scheduled_team] = fallback_year
+
+                    hist_df = pd.concat(historical_frames, ignore_index=True).drop_duplicates()
+                    if fallback_years:
+                        fallback_details = ", ".join(f"{team}: {year}" for team, year in sorted(fallback_years.items()))
+                        st.info(f"ℹ️ Using selected-season logs where available; team-specific historical fallbacks: {fallback_details}.")
         
-                    # Calculate Offensive and Defensive averages per game from player logs
+                   # Calculate Offensive and Defensive averages per game from player logs
                     if not hist_df.empty:
-                        name_map = {
-                            "Fresno St": "Fresno State", "Fresno St.": "Fresno State",
-                            "Florida St": "Florida State", "Florida St.": "Florida State",
-                            "Ohio St": "Ohio State", "Ohio St.": "Ohio State",
-                            "Penn St": "Penn State", "Penn St.": "Penn State",
-                            "Mich St": "Michigan State", "Mich St.": "Michigan State",
-                            "App St": "Appalachian State", "App St.": "Appalachian State",
-                            "San Jose St": "San Jose State", "San Jose St.": "San Jose State",
-                            "Boise St": "Boise State", "Boise St.": "Boise State",
-                            "N.C. State": "NC State", "North Carolina St": "NC State",
-                            "Usc": "USC", "Ucla": "UCLA", "Smu": "SMU", "Ucf": "UCF", "Lsu": "LSU", "Ole Miss": "Mississippi"
-                        }
-        
-                        def clean_team_name(series):
-                            s = series.astype(str).str.strip().str.title()
-                            return s.replace(name_map)
-        
+                        # Standardize team strings across logs and schedule
                         hist_df["team_clean"] = clean_team_name(hist_df["team"])
                         hist_df["opp_clean"] = clean_team_name(hist_df["opponent"])
-                        
-                        normalized_schedule["team_clean"] = clean_team_name(normalized_schedule["team"])
-                        normalized_schedule["opponent_clean"] = clean_team_name(normalized_schedule["opponent"])
         
                         # 1. Offensive Production per game
                         game_offense = hist_df.groupby(["team_clean", "opp_clean", "week"]).agg(
@@ -410,14 +426,21 @@ try:
                     # Calculate Net Advantage Scores
                     matchup_summary["Net_Pass_Edge"] = matchup_summary["Pass_Def_Rank"] - matchup_summary["Pass_Off_Rank"]
                     matchup_summary["Net_Rush_Edge"] = matchup_summary["Rush_Def_Rank"] - matchup_summary["Rush_Off_Rank"]
-
-                    # ----------------------------------------------------
-                    # DIAGNOSTIC DEBUG EXPANDER (Inspect Unmatched Names)
-                    # ----------------------------------------------------
-                    with st.expander("🔍 Debug: View Raw Merged Schedule & Defensive Data"):
-                        st.write("Unique Opponents in Schedule:", normalized_schedule["opponent"].unique()[:10])
-                        st.write("Unique Opponents in Player Logs:", hist_df["opponent"].unique()[:10])
-                        st.dataframe(matchup_summary[["team", "opponent", "pass_yds_allowed", "Pass_Def_Rank"]])
+        
+                    # Clean null values for unranked teams
+                    fill_cols = ["pass_yds_allowed", "rush_yds_allowed", "pass_yds_gained", "rush_yds_gained"]
+                    for col in fill_cols:
+                        if col in matchup_summary.columns:
+                            matchup_summary[col] = matchup_summary[col].fillna(0)
+                    
+                    matchup_summary["Pass_Def_Rank"] = matchup_summary["Pass_Def_Rank"].fillna(99).astype(int)
+                    matchup_summary["Rush_Def_Rank"] = matchup_summary["Rush_Def_Rank"].fillna(99).astype(int)
+                    matchup_summary["Pass_Off_Rank"] = matchup_summary["Pass_Off_Rank"].fillna(99).astype(int)
+                    matchup_summary["Rush_Off_Rank"] = matchup_summary["Rush_Off_Rank"].fillna(99).astype(int)
+        
+                    # Calculate Net Advantage Scores (Higher Net Edge = Weak Defense vs Strong Offense)
+                    matchup_summary["Net_Pass_Edge"] = matchup_summary["Pass_Def_Rank"] - matchup_summary["Pass_Off_Rank"]
+                    matchup_summary["Net_Rush_Edge"] = matchup_summary["Rush_Def_Rank"] - matchup_summary["Rush_Off_Rank"]
         
                     # UI Display - Top Mismatch Cards
                     st.subheader(f"🔥 Top Projected Passing & Rushing Mismatches — Season {slate_year} Week {selected_week}")
