@@ -275,6 +275,8 @@ try:
             st.header("📅 Pre-Game Slate Mismatch Scanner")
             st.markdown("##### *Identify deep offensive and defensive advantages for the upcoming board.*")
             st.markdown("---")
+            # Add this right at the top of Tab 3 under st.header / st.markdown
+            st.write("🔍 **Player Logs Columns:**", list(df.columns) if not df.empty else "df is empty")
         
             try:
                 # Fetch upcoming matchups directly from the normalized SQL View
