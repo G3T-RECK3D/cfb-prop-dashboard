@@ -812,9 +812,7 @@ try:
                         + simulation_df["rush_tds"]
                         + simulation_df["rec_tds"]
                     )
-                position_simulation_df = simulation_df[
-                    simulation_df["opponent_name"].isin(fbs_team_names)
-                ]
+                position_simulation_df = simulation_df
                 position_df = position_simulation_df[
                     position_simulation_df["position"].astype(str).str.upper() == active_pos
                 ]
@@ -828,7 +826,13 @@ try:
                 game_totals[prop_column] = game_totals[prop_column].fillna(0)
                 opponent_games = game_totals[game_totals["opponent_name"] == opponent_name]
                 allowed_avg = opponent_games[prop_column].mean() if not opponent_games.empty else None
-                national_avg = game_totals.groupby("opponent_name")[prop_column].mean().mean() if not game_totals.empty else None
+                fbs_game_totals = game_totals[
+                    game_totals["opponent_name"].isin(fbs_team_names)
+                ]
+                national_avg = (
+                    fbs_game_totals.groupby("opponent_name")[prop_column].mean().mean()
+                    if not fbs_game_totals.empty else None
+                )
 
                 position_defense_games = position_df.groupby(["opponent_name", "week"]).agg(
                     pass_yards_allowed=("pass_yards", "sum"),
@@ -841,6 +845,9 @@ try:
                     pass_yards_allowed=("pass_yards_allowed", "mean"),
                     rush_yards_allowed=("rush_yards_allowed", "mean")
                 ).reset_index()
+                defense_averages = defense_averages[
+                    defense_averages["opponent_name"].isin(fbs_team_names)
+                ]
                 defense_column = "rush_yards_allowed" if active_pos == "RB" else "pass_yards_allowed"
                 defense_averages["defense_rank"] = defense_averages[defense_column].rank(
                     ascending=True, method="min"
@@ -883,13 +890,126 @@ try:
                 f"{allowed_avg - national_avg:+.1f} vs Nat'l Avg"
                 if allowed_avg is not None and national_avg is not None else None
             )
-            m1.metric(f"{opponent_team} {active_pos} {selected_prop} Allowed/G", allowed_value, allowed_delta)
+            current_year_label = str(simulation_season) if simulation_season is not None else "Historical"
+            m1.metric(f"{current_year_label} {opponent_team} {active_pos} {selected_prop} Allowed/G", allowed_value, allowed_delta)
             rank_universe = 138 if simulation_season == 2026 else 136
             dvoa_value = f"#{opponent_rank} of {rank_universe}" if opponent_rank is not None else "No data"
             dvoa_delta = "Top 30 Defense" if opponent_rank is not None and opponent_rank <= 30 else None
-            m2.metric(f"Opponent DVOA vs {active_pos}", dvoa_value, dvoa_delta)
+            m2.metric(f"{current_year_label} Opponent DVOA vs {active_pos}", dvoa_value, dvoa_delta)
             hit_rate_value = f"{hit_rate:.1f}%" if hit_rate is not None else "No data"
-            m3.metric(f"{active_pos} Prop Hit Rate vs Top-30 Defenses", hit_rate_value)
+            m3.metric(f"{current_year_label} {active_pos} Prop Hit Rate vs Top-30 Defenses", hit_rate_value)
+
+            st.markdown("##### 2025 Historical Comparison")
+            comparison_columns = {
+                "Passing Yards": ("pass_yards", "Yards"),
+                "Rushing Yards": ("rush_yards", "Yards"),
+                "Receiving Yards": ("rec_yards", "Yards"),
+                "Touchdowns": ("total_touchdowns", "TDs"),
+                "Receptions": ("receptions", "Receptions")
+            }
+            comparison_column, comparison_unit = comparison_columns[selected_prop]
+            comparison_df = df[df["season"] == 2025].copy()
+            comparison_df["team_name"] = comparison_df["team"].map(canonical_team_name)
+            comparison_df["opponent_name"] = comparison_df["opponent"].map(canonical_team_name)
+            if selected_prop == "Touchdowns":
+                comparison_df[comparison_column] = (
+                    comparison_df["pass_tds"]
+                    + comparison_df["rush_tds"]
+                    + comparison_df["rec_tds"]
+                )
+
+            comparison_position_df = comparison_df[
+                comparison_df["position"].astype(str).str.upper() == active_pos
+            ]
+            comparison_game_keys = comparison_df[["opponent_name", "week"]].drop_duplicates()
+            comparison_totals = comparison_position_df.groupby(
+                ["opponent_name", "week"]
+            )[comparison_column].sum().reset_index()
+            comparison_games = comparison_game_keys.merge(
+                comparison_totals, on=["opponent_name", "week"], how="left"
+            )
+            comparison_games[comparison_column] = comparison_games[comparison_column].fillna(0)
+            comparison_opponent_games = comparison_games[
+                comparison_games["opponent_name"] == opponent_name
+            ]
+            comparison_allowed = (
+                comparison_opponent_games[comparison_column].mean()
+                if not comparison_opponent_games.empty else None
+            )
+            comparison_fbs_games = comparison_games[
+                comparison_games["opponent_name"].isin(fbs_team_names)
+            ]
+            comparison_national = (
+                comparison_fbs_games.groupby("opponent_name")[comparison_column].mean().mean()
+                if not comparison_fbs_games.empty else None
+            )
+
+            comparison_defense = comparison_position_df.groupby(["opponent_name", "week"]).agg(
+                pass_yards_allowed=("pass_yards", "sum"),
+                rush_yards_allowed=("rush_yards", "sum")
+            ).reset_index()
+            comparison_defense = comparison_game_keys.merge(
+                comparison_defense, on=["opponent_name", "week"], how="left"
+            ).fillna(0)
+            comparison_averages = comparison_defense.groupby("opponent_name").agg(
+                pass_yards_allowed=("pass_yards_allowed", "mean"),
+                rush_yards_allowed=("rush_yards_allowed", "mean")
+            ).reset_index()
+            comparison_averages = comparison_averages[
+                comparison_averages["opponent_name"].isin(fbs_team_names)
+            ]
+            comparison_defense_column = "rush_yards_allowed" if active_pos == "RB" else "pass_yards_allowed"
+            comparison_averages["defense_rank"] = comparison_averages[comparison_defense_column].rank(
+                ascending=True, method="min"
+            ).astype(int)
+            comparison_rank_row = comparison_averages[
+                comparison_averages["opponent_name"] == opponent_name
+            ]
+            comparison_rank = (
+                int(comparison_rank_row["defense_rank"].iloc[0])
+                if not comparison_rank_row.empty else None
+            )
+            comparison_top_30 = set(
+                comparison_averages.nsmallest(30, comparison_defense_column)["opponent_name"]
+            )
+            comparison_target_logs = comparison_df[
+                (comparison_df["team_name"] == target_name)
+                & (comparison_df["position"].astype(str).str.upper() == active_pos)
+                & (comparison_df["opponent_name"].isin(comparison_top_30))
+            ]
+            comparison_hit_rate = (
+                (comparison_target_logs[comparison_column] > prop_lines[selected_prop]).mean() * 100
+                if not comparison_target_logs.empty else None
+            )
+            comparison_allowed_value = (
+                f"{comparison_allowed:.1f} {comparison_unit}"
+                if comparison_allowed is not None else "No data"
+            )
+            comparison_delta = (
+                f"{comparison_allowed - comparison_national:+.1f} vs Nat'l Avg"
+                if comparison_allowed is not None and comparison_national is not None else None
+            )
+            comparison_rank_value = (
+                f"#{comparison_rank} of 136" if comparison_rank is not None else "No data"
+            )
+            comparison_hit_value = (
+                f"{comparison_hit_rate:.1f}%" if comparison_hit_rate is not None else "No data"
+            )
+            c2025_1, c2025_2, c2025_3 = st.columns(3)
+            c2025_1.metric(
+                f"2025 {opponent_team} {active_pos} {selected_prop} Allowed/G",
+                comparison_allowed_value,
+                comparison_delta
+            )
+            c2025_2.metric(
+                f"2025 Opponent DVOA vs {active_pos}",
+                comparison_rank_value,
+                "Top 30 Defense" if comparison_rank is not None and comparison_rank <= 30 else None
+            )
+            c2025_3.metric(
+                f"2025 {active_pos} Prop Hit Rate vs Top-30 Defenses",
+                comparison_hit_value
+            )
             
 except Exception as global_e:
     st.error("⚠️ Failed to load database logs.")
