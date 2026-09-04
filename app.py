@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import numpy as np
+import math
 from supabase import create_client
 
 # 1. --- APP INITIALIZATION & THEME CONFIG ---
@@ -729,6 +731,131 @@ try:
                 )
         
             st.markdown("---")
+            st.markdown("##### 🎯 Simulation Mode")
+            opponent_team = [t for t in teams_in_game if t != selected_target_team][0] if len(teams_in_game) == 2 else "Opponent"
+
+            if "simulation_mode" not in st.session_state:
+                st.session_state.simulation_mode = "Position Group"
+
+            mode_col1, mode_col2 = st.columns(2)
+            with mode_col1:
+                if st.button(
+                    "Position Group",
+                    use_container_width=True,
+                    type="primary" if st.session_state.simulation_mode == "Position Group" else "secondary"
+                ):
+                    st.session_state.simulation_mode = "Position Group"
+                    st.rerun()
+            with mode_col2:
+                if st.button(
+                    "Player",
+                    use_container_width=True,
+                    type="primary" if st.session_state.simulation_mode == "Player" else "secondary"
+                ):
+                    st.session_state.simulation_mode = "Player"
+                    st.rerun()
+
+            if st.session_state.simulation_mode == "Player":
+                if selected_prop != "Passing Yards":
+                    st.info("Player simulation is currently available for QB Passing Yards only.")
+                    st.stop()
+
+                player_sim_df = df[
+                    (df["team"].astype(str).str.casefold() == selected_target_team.casefold())
+                    & (df["position"].astype(str).str.upper() == "QB")
+                ].copy()
+                player_options = sorted(player_sim_df["player_name"].dropna().unique())
+
+                st.markdown("---")
+                st.subheader("👤 QB Passing Yards Simulation")
+                st.caption("Select a quarterback and enter the sportsbook line. All model factors are calculated from the historical logs.")
+
+                if not player_options:
+                    st.warning(f"No player logs found for {selected_target_team}. Select another team or matchup.")
+                    st.stop()
+
+                selected_sim_player = st.selectbox("Select Player", player_options, key="player_sim_player")
+                selected_player_logs = player_sim_df[player_sim_df["player_name"] == selected_sim_player].copy()
+                latest_season = selected_player_logs["season"].max() if not selected_player_logs.empty else None
+                recent_logs = selected_player_logs[
+                    selected_player_logs["season"] == latest_season
+                ].sort_values("week", ascending=False).head(5)
+                recent_yards = recent_logs["pass_yards"].astype(float)
+                recent_attempts = recent_logs["pass_att"].astype(float)
+                total_attempts = recent_attempts.sum()
+                base_ypa = recent_yards.sum() / total_attempts if total_attempts > 0 else 0.0
+                projected_attempts = recent_attempts.mean() if not recent_attempts.empty else 0.0
+
+                season_logs = df[df["season"] == latest_season].copy() if latest_season is not None else df.iloc[0:0].copy()
+                season_logs["game_key"] = season_logs["team"].astype(str) + "|" + season_logs["opponent"].astype(str) + "|" + season_logs["week"].astype(str)
+                defense_games = season_logs.groupby(["opponent", "week"], as_index=False).agg(
+                    pass_yards_allowed=("pass_yards", "sum")
+                )
+                opponent_allowed = defense_games[
+                    defense_games["opponent"].astype(str).str.casefold() == opponent_team.casefold()
+                ]["pass_yards_allowed"].mean()
+                fbs_average_allowed = defense_games.groupby("opponent")["pass_yards_allowed"].mean().mean()
+                defensive_multiplier = (
+                    opponent_allowed / fbs_average_allowed
+                    if pd.notna(opponent_allowed) and pd.notna(fbs_average_allowed) and fbs_average_allowed > 0
+                    else 1.0
+                )
+                projected_mean = projected_attempts * base_ypa * defensive_multiplier
+
+                if len(recent_yards) >= 2:
+                    historical_volatility = float(recent_yards.std(ddof=1))
+                else:
+                    historical_volatility = max(45.0, projected_mean * 0.20)
+                historical_volatility = max(historical_volatility, 5.0)
+                player_line = st.number_input(
+                    "Sportsbook Line (Passing Yards)", min_value=0.0,
+                    value=249.5, step=0.5, key="player_sim_line"
+                )
+
+                if projected_mean <= 0:
+                    simulated_yards = np.zeros(10000)
+                    over_probability = 0.0
+                    log_mu = 0.0
+                    log_sigma = 0.0
+                else:
+                    log_sigma = math.sqrt(math.log(1 + (historical_volatility ** 2 / projected_mean ** 2)))
+                    log_mu = math.log(projected_mean) - (log_sigma ** 2 / 2)
+                    simulated_yards = np.random.default_rng().lognormal(log_mu, log_sigma, 10000)
+
+                    over_probability = float(np.mean(simulated_yards > player_line))
+                under_probability = 1.0 - over_probability
+                model_edge = (over_probability - 0.524) * 100
+
+                st.markdown("---")
+                st.subheader(f"🎲 {selected_sim_player} Simulation Result")
+                control_col, _ = st.columns([1, 3])
+                with control_col:
+                    st.metric("Sportsbook Line", f"{player_line:.1f} Yds")
+                info_col1, info_col2, info_col3 = st.columns(3)
+                info_col1.metric("Games Logged", len(selected_player_logs))
+                info_col2.metric("Historical Volatility", f"{historical_volatility:.1f} Yds")
+                info_col3.metric("Defensive Multiplier", f"{defensive_multiplier:.3f}")
+
+                result_col1, result_col2, result_col3, result_col4, result_col5, result_col6 = st.columns(6)
+                result_col1.metric("Base Efficiency", f"{base_ypa:.2f} YPA")
+                result_col2.metric("Projected Pass Attempts", f"{projected_attempts:.1f}")
+                result_col3.metric("Projected Mean Yards", f"{projected_mean:.1f}")
+                result_col4.metric("OVER Probability", f"{over_probability * 100:.1f}%")
+                result_col5.metric("UNDER Probability", f"{under_probability * 100:.1f}%")
+                result_col6.metric("Model Edge", f"{model_edge:+.1f}%")
+                st.metric("Simulated Median Yards", f"{np.median(simulated_yards):.1f} Yds")
+
+                chart_df = pd.DataFrame({"Simulated Passing Yards": simulated_yards})
+                chart = px.histogram(chart_df, x="Simulated Passing Yards", nbins=40, title="10,000 Simulated Passing-Yard Outcomes")
+                chart.add_vline(x=player_line, line_dash="dash", line_color="#f97316", annotation_text="Sportsbook Line")
+                chart.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#f1f5f9")
+                st.plotly_chart(chart, use_container_width=True)
+                st.info(
+                    f"{selected_sim_player} ({selected_target_team}) vs {opponent_team}: "
+                    f"projected {projected_mean:.1f} passing yards against a {player_line:g} line."
+                )
+                st.stop()
+
             st.markdown("##### 🏈 Select Position Filter")
         
             # 3. Position Selector Buttons
@@ -759,7 +886,6 @@ try:
         
             # 4. Display Selected Context
             active_pos = st.session_state.selected_pos
-            opponent_team = [t for t in teams_in_game if t != selected_target_team][0] if len(teams_in_game) == 2 else "Opponent"
         
             st.success(f"Viewing **2026 {selected_week}**: **{selected_target_team} ({active_pos})** vs **{opponent_team} Defense** for **{selected_prop}**")
         
